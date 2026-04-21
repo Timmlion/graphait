@@ -1,3 +1,6 @@
+import os
+os.environ.setdefault("SECRET_KEY", "test-secret-key-for-testing-only-minimum-32-chars!!")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

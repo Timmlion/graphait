@@ -23,6 +23,8 @@ def create_access_token(data: dict) -> str:
 
 
 def decode_access_token(token: str) -> Optional[dict]:
+    # Returns None for both invalid and expired tokens.
+    # M1 has no refresh token mechanism — all failures result in re-login (401).
     try:
         return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
     except JWTError:
