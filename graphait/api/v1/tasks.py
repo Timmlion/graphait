@@ -8,6 +8,8 @@ from graphait.models.agent import Agent
 from graphait.models.user import User
 from graphait.modules.tasks.service import task_service
 from graphait.schemas.task import TaskCreate, TaskUpdate, TaskRead
+from graphait.modules.tasks.comment_service import comment_service
+from graphait.schemas.comment import CommentCreate, CommentRead
 
 router = APIRouter()
 
@@ -59,3 +61,16 @@ def update_task(task_id: uuid.UUID, body: TaskUpdate, db: Session = Depends(get_
 def delete_task(task_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     task = _get_task_or_404(task_id, current_user, db)
     task_service.delete(db, task)
+
+
+@router.get("/{task_id}/comments", response_model=list[CommentRead])
+def list_comments(task_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    _get_task_or_404(task_id, current_user, db)
+    return comment_service.list(db, task_id)
+
+
+@router.post("/{task_id}/comments", response_model=CommentRead, status_code=status.HTTP_201_CREATED)
+def add_comment(task_id: uuid.UUID, body: CommentCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    _get_task_or_404(task_id, current_user, db)
+    author_id = _require_agent_id(current_user, db)
+    return comment_service.create(db, task_id, author_id, body)

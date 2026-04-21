@@ -52,3 +52,12 @@ def test_create_task_without_linked_agent_returns_400(client):
     headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
     resp = client.post("/api/v1/tasks", json={"title": "No creator"}, headers=headers)
     assert resp.status_code == 400
+
+
+def test_add_and_list_comments(client, setup):
+    headers, agent = setup
+    task = client.post("/api/v1/tasks", json={"title": "Commented task"}, headers=headers).json()
+    client.post(f"/api/v1/tasks/{task['id']}/comments", json={"content": "First comment"}, headers=headers)
+    resp = client.get(f"/api/v1/tasks/{task['id']}/comments", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()[0]["content"] == "First comment"
