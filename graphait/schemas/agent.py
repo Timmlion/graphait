@@ -18,6 +18,7 @@ class AgentCreate(BaseModel):
 class AgentUpdate(BaseModel):
     name: Optional[str] = None
     role_title: Optional[str] = None
+    user_id: Optional[uuid.UUID] = None
     connector_type: Optional[str] = None
     connector_config: Optional[dict] = None
     system_prompt: Optional[str] = None
