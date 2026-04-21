@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -28,6 +29,8 @@ class ScheduleRead(BaseModel):
     agent_id: uuid.UUID
     interval_seconds: int
     is_enabled: bool
+    last_run_at: Optional[datetime]
+    next_run_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
 
