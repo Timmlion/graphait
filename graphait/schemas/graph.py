@@ -25,12 +25,16 @@ class GraphNode(BaseModel):
     type: AgentType
     is_active: bool
 
+    model_config = {"from_attributes": True}
+
 
 class GraphEdge(BaseModel):
     id: uuid.UUID
     from_agent_id: uuid.UUID
     to_agent_id: uuid.UUID
     type: RelationshipType
+
+    model_config = {"from_attributes": True}
 
 
 class GraphData(BaseModel):

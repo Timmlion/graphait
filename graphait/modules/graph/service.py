@@ -30,7 +30,8 @@ class GraphService:
         agents = db.query(Agent).filter(Agent.org_id == org_id).all()
         agent_ids = {a.id for a in agents}
         rels = db.query(AgentRelationship).filter(
-            AgentRelationship.from_agent_id.in_(agent_ids)
+            AgentRelationship.from_agent_id.in_(agent_ids),
+            AgentRelationship.to_agent_id.in_(agent_ids),
         ).all()
         nodes = [GraphNode(id=a.id, name=a.name, role_title=a.role_title, type=a.type, is_active=a.is_active) for a in agents]
         edges = [GraphEdge(id=r.id, from_agent_id=r.from_agent_id, to_agent_id=r.to_agent_id, type=r.type) for r in rels]
