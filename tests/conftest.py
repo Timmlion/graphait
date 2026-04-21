@@ -3,7 +3,7 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-for-testing-only-minimum-32
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from graphait.database import Base, get_db
@@ -22,11 +22,21 @@ def engine():
 
 @pytest.fixture()
 def db(engine):
-    TestingSession = sessionmaker(bind=engine)
+    connection = engine.connect()
+    transaction = connection.begin()
+    TestingSession = sessionmaker(bind=connection)
     session = TestingSession()
+    session.begin_nested()  # savepoint — commit() inside handlers stays local
+
+    @event.listens_for(session, "after_transaction_end")
+    def restart_savepoint(session, transaction):
+        if transaction.nested and not transaction._parent.nested:
+            session.begin_nested()
+
     yield session
-    session.rollback()
     session.close()
+    transaction.rollback()
+    connection.close()
 
 
 @pytest.fixture()
