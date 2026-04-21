@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
 from graphait.models.agent import AgentType
@@ -31,8 +32,10 @@ class AgentRead(BaseModel):
     role_title: str
     type: AgentType
     connector_type: Optional[str]
+    connector_config: Optional[dict]
     system_prompt: Optional[str]
     authority_scope: Optional[dict]
     is_active: bool
+    created_at: datetime
 
     model_config = {"from_attributes": True}
