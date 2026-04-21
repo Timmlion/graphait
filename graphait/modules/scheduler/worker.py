@@ -102,8 +102,11 @@ async def _execute_action(db: Session, agent: Agent, action: Action) -> None:
                     assignee_id=rel.to_agent_id,
                     task_type="approval_request",
                 ))
+        else:
+            logger.warning("Unknown action type '%s' from agent %s", action.type, agent.id)
     except Exception as e:
-        logger.error("Failed to execute action %s: %s", action.type, e)
+        logger.error("Failed to execute action %s for agent %s (payload=%s): %s",
+                     action.type, agent.id, action.payload, e)
 
 
 async def run_agent_tick(agent_id: uuid.UUID) -> None:
@@ -126,6 +129,6 @@ async def run_agent_tick(agent_id: uuid.UUID) -> None:
         schedule = agent.schedule
         if schedule:
             schedule.last_run_at = datetime.now(timezone.utc)
-            db.commit()
+        db.commit()
     finally:
         db.close()

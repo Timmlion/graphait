@@ -42,6 +42,7 @@ class SchedulerService:
 
     def schedule_agent(self, agent_id: uuid.UUID, interval_seconds: int) -> None:
         if not self._scheduler:
+            logger.warning("schedule_agent called but scheduler is not running (agent_id=%s)", agent_id)
             return
         job_id = f"agent_{agent_id}"
         self._scheduler.add_job(
