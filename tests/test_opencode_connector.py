@@ -1,5 +1,6 @@
 import json
 import uuid
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from graphait.connectors.opencode.connector import OpenCodeConnector
 from graphait.connectors.base import AgentContext
@@ -30,9 +31,9 @@ async def test_opencode_connector_parses_actions():
     mock_proc.returncode = 0
     mock_proc.communicate = AsyncMock(return_value=(fake_stdout, b""))
 
-    with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
-        with patch("asyncio.wait_for", new_callable=AsyncMock, return_value=(fake_stdout, b"")):
-            actions = await connector.run(make_context(), config)
+    with patch("graphait.connectors.opencode.connector.asyncio.create_subprocess_exec",
+               new_callable=AsyncMock, return_value=mock_proc):
+        actions = await connector.run(make_context(), config)
 
     assert len(actions) == 1
     assert actions[0].type == "update_status"
@@ -46,8 +47,7 @@ async def test_opencode_connector_raises_on_nonzero_exit():
     mock_proc.returncode = 1
     mock_proc.communicate = AsyncMock(return_value=(b"", b"error message"))
 
-    with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
-        with patch("asyncio.wait_for", new_callable=AsyncMock, return_value=(b"", b"error message")):
-            import pytest
-            with pytest.raises(RuntimeError, match="OpenCode exited 1"):
-                await connector.run(make_context(), config)
+    with patch("graphait.connectors.opencode.connector.asyncio.create_subprocess_exec",
+               new_callable=AsyncMock, return_value=mock_proc):
+        with pytest.raises(RuntimeError, match="OpenCode exited 1"):
+            await connector.run(make_context(), config)

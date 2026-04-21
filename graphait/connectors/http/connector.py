@@ -30,6 +30,9 @@ class HTTPConnector(BaseConnector):
         api_key = connector_config.get("api_key", "")
         model = connector_config.get("model", "openai/gpt-4o-mini")
 
+        if not api_key:
+            raise ValueError("connector_config must include 'api_key'")
+
         system_msg = SYSTEM_TEMPLATE.format(
             name=context.agent_name,
             role_title=context.role_title,
@@ -50,7 +53,11 @@ class HTTPConnector(BaseConnector):
                 ]},
             )
             resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
 
-        content = resp.json()["choices"][0]["message"]["content"]
-        data = json.loads(content)
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"HTTPConnector failed to parse response: {e}\nRaw: {content[:200]}") from e
+
         return [Action(type=a["type"], payload=a.get("payload", {})) for a in data.get("actions", [])]

@@ -64,5 +64,9 @@ class OpenCodeConnector(BaseConnector):
         start = output.find("{")
         if start == -1:
             return []
-        data = json.loads(output[start:])
+        raw = output[start:]
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"OpenCodeConnector failed to parse response: {e}\nRaw: {raw[:200]}") from e
         return [Action(type=a["type"], payload=a.get("payload", {})) for a in data.get("actions", [])]
