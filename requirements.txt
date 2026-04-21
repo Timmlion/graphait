@@ -8,7 +8,8 @@ apscheduler==3.10.4
 pydantic-settings==2.6.1
 pydantic[email]==2.10.3
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+passlib[bcrypt]>=1.7.4
+bcrypt>=3.2,<5.0
 python-multipart==0.0.20
 httpx==0.28.1
 cryptography==43.0.3
