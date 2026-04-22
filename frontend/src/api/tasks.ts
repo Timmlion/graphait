@@ -1,0 +1,38 @@
+import { apiFetch } from './client'
+
+export type TaskStatus = 'todo' | 'in_progress' | 'waiting_approval' | 'done'
+export type TaskPriority = 'low' | 'medium' | 'high' | 'critical'
+
+export interface Task {
+  id: string
+  org_id: string
+  number: number
+  title: string
+  description: string | null
+  status: TaskStatus
+  priority: TaskPriority
+  assignee_id: string | null
+  creator_id: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Comment {
+  id: string
+  task_id: string
+  author_id: string
+  content: string
+  created_at: string
+}
+
+export const tasksApi = {
+  list: () => apiFetch<Task[]>('/tasks'),
+  create: (body: { title: string; description?: string; priority?: TaskPriority; assignee_id?: string }) =>
+    apiFetch<Task>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: { title?: string; description?: string; status?: TaskStatus; priority?: TaskPriority; assignee_id?: string }) =>
+    apiFetch<Task>(`/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  delete: (id: string) => apiFetch<void>(`/tasks/${id}`, { method: 'DELETE' }),
+  listComments: (id: string) => apiFetch<Comment[]>(`/tasks/${id}/comments`),
+  addComment: (id: string, content: string) =>
+    apiFetch<Comment>(`/tasks/${id}/comments`, { method: 'POST', body: JSON.stringify({ content }) }),
+}

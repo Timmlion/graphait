@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Graphait - Agent Graph</title>
+<!-- Google Fonts: Inter & Space Grotesk -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "inverse-primary": "#c3c0ff",
+                        "on-secondary-fixed-variant": "#404758",
+                        "on-tertiary": "#ffffff",
+                        "on-tertiary-fixed": "#351000",
+                        "surface-container-highest": "#e1e3e4",
+                        "tertiary-fixed-dim": "#ffb695",
+                        "inverse-surface": "#2e3132",
+                        "surface-dim": "#d9dadb",
+                        "on-secondary-container": "#5c6274",
+                        "on-surface-variant": "#464555",
+                        "tertiary": "#7e3000",
+                        "on-background": "#191c1d",
+                        "outline": "#777587",
+                        "on-error": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "on-secondary": "#ffffff",
+                        "tertiary-container": "#a44100",
+                        "secondary-container": "#d9dff5",
+                        "surface-container-high": "#e7e8e9",
+                        "tertiary-fixed": "#ffdbcc",
+                        "on-surface": "#191c1d",
+                        "primary-fixed": "#e2dfff",
+                        "surface": "#f8f9fa",
+                        "error": "#ba1a1a",
+                        "on-primary": "#ffffff",
+                        "on-primary-fixed-variant": "#3323cc",
+                        "background": "#f8f9fa",
+                        "primary": "#3525cd",
+                        "secondary-fixed-dim": "#c0c6db",
+                        "outline-variant": "#c7c4d8",
+                        "surface-bright": "#f8f9fa",
+                        "on-primary-fixed": "#0f0069",
+                        "on-primary-container": "#dad7ff",
+                        "primary-container": "#4f46e5",
+                        "secondary-fixed": "#dce2f7",
+                        "on-secondary-fixed": "#141b2b",
+                        "surface-tint": "#4d44e3",
+                        "on-error-container": "#93000a",
+                        "surface-variant": "#e1e3e4",
+                        "surface-container": "#edeeef",
+                        "on-tertiary-container": "#ffd2be",
+                        "primary-fixed-dim": "#c3c0ff",
+                        "on-tertiary-fixed-variant": "#7b2f00",
+                        "surface-container-lowest": "#ffffff",
+                        "inverse-on-surface": "#f0f1f2",
+                        "secondary": "#575e70",
+                        "surface-container-low": "#f3f4f5"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    spacing: {
+                        "xs": "4px",
+                        "header-height": "48px",
+                        "sm": "8px",
+                        "md": "16px",
+                        "lg": "24px",
+                        "panel-width": "280px",
+                        "base": "4px"
+                    },
+                    fontFamily: {
+                        "body-sm": ["Inter"],
+                        "h1": ["Inter"],
+                        "table-cell": ["Inter"],
+                        "label-mono": ["Space Grotesk"],
+                        "body-main": ["Inter"]
+                    },
+                    fontSize: {
+                        "body-sm": ["12px", { lineHeight: "18px", letterSpacing: "0em", fontWeight: "400" }],
+                        "h1": ["18px", { lineHeight: "24px", letterSpacing: "-0.02em", fontWeight: "600" }],
+                        "table-cell": ["13px", { lineHeight: "16px", letterSpacing: "0em", fontWeight: "400" }],
+                        "label-mono": ["10px", { lineHeight: "12px", letterSpacing: "0.05em", fontWeight: "500" }],
+                        "body-main": ["13px", { lineHeight: "20px", letterSpacing: "0em", fontWeight: "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Hide scrollbars for structural panes but allow scroll */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface flex items-center justify-center min-h-screen">
+<!-- 1440x900 Fixed Viewport Container -->
+<div class="w-[1440px] h-[900px] flex flex-col bg-surface-container-lowest relative overflow-hidden shadow-sm border border-outline-variant">
+<!-- TopNavBar Shared Component -->
+<header class="h-12 w-full border-b border-outline-variant bg-surface-container-lowest flex items-center justify-between px-4 shrink-0 z-10">
+<div class="flex items-center gap-4">
+<div class="text-lg font-bold tracking-tight text-primary flex items-center gap-2">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">hub</span>
+                    Graphait
+                </div>
+<div class="h-4 w-px bg-outline-variant"></div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Acme Corp Organization</span>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex items-center text-on-surface-variant gap-1">
+<button class="p-1.5 hover:bg-surface-container rounded-DEFAULT transition-colors">
+<span class="material-symbols-outlined text-[20px]">search</span>
+</button>
+<button class="p-1.5 hover:bg-surface-container rounded-DEFAULT transition-colors">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+</button>
+</div>
+<div class="h-6 w-6 rounded-full overflow-hidden bg-secondary-container shrink-0 border border-outline-variant">
+<img alt="User Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCB3KEg32BX86wO1rRk6CQacKs-8lG6x08obmLdxyfC_kXY9LR0y_pb74eEgreLzU1Hyn-luFPxGPHAt3LaJztJb6UPi-CxO_fjA7hDpiZD7gWgjCcpi8PCuY42cZj4UoFVeCL8_1khhovLxQjwh9URJ6alBdDGa1SSHb7VvXbeTASEmJ2KuGpGBm4fyfmRSO-FLYYzSnmSQRZe7J4WVGlkFFsLfHhcWSO1z5ZhAZ-p6Tx1LMmHe3nQrq2q7_6NbzohzA3WIgr6KIL8"/>
+</div>
+</div>
+</header>
+<!-- Main Layout (Below Header) -->
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar Shared Component (App Level) -->
+<nav class="w-[240px] h-full border-r border-outline-variant bg-surface flex flex-col pt-4 pb-4 shrink-0 z-10">
+<div class="px-3 mb-2 flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 bg-surface-container-lowest border-l-4 border-primary text-primary font-body-sm text-body-sm font-medium shadow-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">dashboard</span>
+                        Dashboard
+                    </a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-secondary-container ml-1 hover:bg-surface-container-low transition-all font-body-sm text-body-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">smart_toy</span>
+                        Agents
+                    </a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-secondary-container ml-1 hover:bg-surface-container-low transition-all font-body-sm text-body-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">account_tree</span>
+                        Workflows
+                    </a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-secondary-container ml-1 hover:bg-surface-container-low transition-all font-body-sm text-body-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">terminal</span>
+                        Logs
+                    </a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-secondary-container ml-1 hover:bg-surface-container-low transition-all font-body-sm text-body-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">settings</span>
+                        Settings
+                    </a>
+</div>
+<div class="mt-auto px-3 flex flex-col gap-1 border-t border-outline-variant pt-2">
+<a class="flex items-center gap-3 px-3 py-2 text-on-secondary-container ml-1 hover:bg-surface-container-low transition-all font-body-sm text-body-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">help</span>
+                        Help
+                    </a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-secondary-container ml-1 hover:bg-surface-container-low transition-all font-body-sm text-body-sm" href="#">
+<span class="material-symbols-outlined text-[18px]">check_circle</span>
+                        Status
+                    </a>
+</div>
+</nav>
+<!-- Inner Layout: Agent List, Graph, Details -->
+<div class="flex flex-1 overflow-hidden bg-surface-container-lowest">
+<!-- Pane 1: Agent List (240px) -->
+<div class="w-[240px] h-full border-r border-outline-variant flex flex-col shrink-0 bg-surface-container-lowest">
+<div class="p-3 border-b border-outline-variant flex items-center justify-between">
+<h2 class="font-body-sm text-body-sm font-semibold text-on-surface">Active Agents</h2>
+<span class="font-label-mono text-label-mono bg-surface-container px-1.5 py-0.5 rounded-DEFAULT text-on-surface-variant">12</span>
+</div>
+<div class="p-2 border-b border-outline-variant bg-surface-container-lowest">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-2 top-1.5 text-[14px] text-outline">search</span>
+<input class="w-full h-7 pl-7 pr-2 border border-outline-variant rounded-[4px] bg-surface-container-lowest text-body-sm font-body-sm focus:border-primary focus:ring-0 outline-none placeholder:text-outline" placeholder="Filter nodes..." type="text"/>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto no-scrollbar py-2 flex flex-col">
+<!-- AI Agent Item -->
+<div class="flex items-center px-3 py-1.5 hover:bg-surface-container-low cursor-pointer group bg-surface-container-low border-l-2 border-primary">
+<div class="w-6 h-6 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-mono text-[10px] mr-3 shrink-0">EX</div>
+<div class="flex flex-col flex-1 min-w-0">
+<span class="font-body-sm text-body-sm text-on-surface truncate font-medium">Data Extractor</span>
+<span class="font-label-mono text-[9px] text-outline truncate">v2.1.0 • Running</span>
+</div>
+</div>
+<!-- AI Agent Item -->
+<div class="flex items-center px-3 py-1.5 hover:bg-surface-container-low cursor-pointer group border-l-2 border-transparent">
+<div class="w-6 h-6 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-mono text-[10px] mr-3 shrink-0">AN</div>
+<div class="flex flex-col flex-1 min-w-0">
+<span class="font-body-sm text-body-sm text-on-surface truncate">Analyzer</span>
+<span class="font-label-mono text-[9px] text-outline truncate">v1.4.2 • Idle</span>
+</div>
+</div>
+<!-- Human Agent Item -->
+<div class="flex items-center px-3 py-1.5 hover:bg-surface-container-low cursor-pointer group border-l-2 border-transparent mt-2">
+<div class="w-6 h-6 rounded-full bg-surface-container-highest border border-outline-variant text-on-surface-variant flex items-center justify-center font-label-mono text-[10px] mr-3 shrink-0">JS</div>
+<div class="flex flex-col flex-1 min-w-0">
+<span class="font-body-sm text-body-sm text-on-surface truncate">John Smith</span>
+<span class="font-label-mono text-[9px] text-outline truncate">Supervisor</span>
+</div>
+</div>
+<!-- Human Agent Item -->
+<div class="flex items-center px-3 py-1.5 hover:bg-surface-container-low cursor-pointer group border-l-2 border-transparent">
+<div class="w-6 h-6 rounded-full bg-surface-container-highest border border-outline-variant text-on-surface-variant flex items-center justify-center font-label-mono text-[10px] mr-3 shrink-0">MK</div>
+<div class="flex flex-col flex-1 min-w-0">
+<span class="font-body-sm text-body-sm text-on-surface truncate">Maria K.</span>
+<span class="font-label-mono text-[9px] text-outline truncate">Reviewer</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Pane 2: Force-Directed Graph Canvas (flex-grow) -->
+<div class="flex-1 relative bg-surface overflow-hidden">
+<!-- Graph Background Pattern (Subtle grid) -->
+<div class="absolute inset-0 opacity-[0.03] pointer-events-none" style="background-image: radial-gradient(#000 1px, transparent 1px); background-size: 16px 16px;"></div>
+<!-- Graph Controls -->
+<div class="absolute top-4 left-4 flex gap-2 z-10">
+<button class="h-7 w-7 flex items-center justify-center bg-surface-container-lowest border border-outline-variant rounded-[4px] hover:bg-surface-container text-on-surface-variant shadow-sm">
+<span class="material-symbols-outlined text-[16px]">zoom_in</span>
+</button>
+<button class="h-7 w-7 flex items-center justify-center bg-surface-container-lowest border border-outline-variant rounded-[4px] hover:bg-surface-container text-on-surface-variant shadow-sm">
+<span class="material-symbols-outlined text-[16px]">zoom_out</span>
+</button>
+<button class="h-7 w-7 flex items-center justify-center bg-surface-container-lowest border border-outline-variant rounded-[4px] hover:bg-surface-container text-on-surface-variant shadow-sm ml-2">
+<span class="material-symbols-outlined text-[16px]">center_focus_strong</span>
+</button>
+</div>
+<!-- SVG Edges Layer -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none">
+<!-- Edge 1 -->
+<path d="M 150 200 L 300 300" fill="none" stroke="#c7c4d8" stroke-dasharray="4 4" stroke-width="1.5"></path>
+<!-- Edge 2 -->
+<path d="M 300 300 L 450 220" fill="none" stroke="#c7c4d8" stroke-width="1.5"></path>
+<!-- Edge 3 -->
+<path d="M 300 300 L 250 450" fill="none" stroke="#c7c4d8" stroke-width="1.5"></path>
+<!-- Edge Labels (Absolute positioned divs are easier for UI consistency, but can use SVG text) -->
+</svg>
+<!-- Edge Labels (HTML overlay for typography consistency) -->
+<div class="absolute left-[200px] top-[230px] font-label-mono text-[9px] text-outline bg-surface px-1 border border-outline-variant rounded-[2px]">triggers</div>
+<div class="absolute left-[360px] top-[245px] font-label-mono text-[9px] text-outline bg-surface px-1 border border-outline-variant rounded-[2px]">data flow</div>
+<div class="absolute left-[285px] top-[370px] font-label-mono text-[9px] text-outline bg-surface px-1 border border-outline-variant rounded-[2px]">reports to</div>
+<!-- Nodes Layer -->
+<!-- Node 1: Crawler -->
+<div class="absolute left-[134px] top-[184px] flex flex-col items-center gap-1 cursor-pointer group">
+<div class="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-mono text-[11px] shadow-sm ring-2 ring-transparent group-hover:ring-primary/30 transition-all z-10">CR</div>
+<span class="font-body-sm text-[11px] text-on-surface font-medium bg-surface/80 px-1 rounded">Crawler</span>
+</div>
+<!-- Node 2: Extractor (Active/Selected) -->
+<div class="absolute left-[284px] top-[284px] flex flex-col items-center gap-1 cursor-pointer group">
+<div class="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-mono text-[11px] shadow-sm ring-4 ring-primary-container z-10">EX</div>
+<span class="font-body-sm text-[11px] text-primary font-medium bg-surface/80 px-1 rounded">Extractor</span>
+</div>
+<!-- Node 3: Analyzer -->
+<div class="absolute left-[434px] top-[204px] flex flex-col items-center gap-1 cursor-pointer group">
+<div class="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-mono text-[11px] shadow-sm ring-2 ring-transparent group-hover:ring-primary/30 transition-all z-10">AN</div>
+<span class="font-body-sm text-[11px] text-on-surface font-medium bg-surface/80 px-1 rounded">Analyzer</span>
+</div>
+<!-- Node 4: Human Supervisor -->
+<div class="absolute left-[234px] top-[434px] flex flex-col items-center gap-1 cursor-pointer group">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest border border-outline-variant text-on-surface-variant flex items-center justify-center font-label-mono text-[11px] shadow-sm ring-2 ring-transparent group-hover:ring-outline-variant transition-all z-10">JS</div>
+<span class="font-body-sm text-[11px] text-on-surface-variant font-medium bg-surface/80 px-1 rounded">John Smith</span>
+</div>
+</div>
+<!-- Pane 3: Details Panel (320px) -->
+<div class="w-[320px] h-full border-l border-outline-variant bg-surface-container-lowest flex flex-col shrink-0 z-10 shadow-[-4px_0_12px_rgba(0,0,0,0.02)]">
+<!-- Header -->
+<div class="p-4 border-b border-outline-variant flex flex-col gap-3">
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-mono text-[14px]">EX</div>
+<div>
+<h3 class="font-body-sm text-body-sm font-semibold text-on-surface leading-tight">Data Extractor</h3>
+<span class="font-label-mono text-label-mono text-outline">agent_id: ext-09x82</span>
+</div>
+</div>
+<button class="text-outline hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</div>
+<div class="flex items-center gap-2 mt-1">
+<span class="h-5 px-1.5 flex items-center bg-surface-container rounded-[2px] font-label-mono text-[10px] text-on-surface-variant border border-outline-variant/50">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                                Running
+                            </span>
+<span class="h-5 px-1.5 flex items-center bg-surface-container rounded-[2px] font-label-mono text-[10px] text-on-surface-variant border border-outline-variant/50">
+                                v2.1.0
+                            </span>
+</div>
+</div>
+<!-- Tabs -->
+<div class="flex px-4 border-b border-outline-variant">
+<button class="h-9 px-2 font-body-sm text-body-sm font-medium border-b-2 border-primary text-primary -mb-[1px]">Configuration</button>
+<button class="h-9 px-2 font-body-sm text-body-sm text-on-surface-variant hover:text-on-surface border-b-2 border-transparent ml-4">Logs</button>
+<button class="h-9 px-2 font-body-sm text-body-sm text-on-surface-variant hover:text-on-surface border-b-2 border-transparent ml-4">Metrics</button>
+</div>
+<!-- Config Form -->
+<div class="flex-1 overflow-y-auto no-scrollbar p-4 flex flex-col gap-5">
+<!-- Form Section -->
+<div class="flex flex-col gap-4">
+<h4 class="font-label-mono text-label-mono text-outline uppercase tracking-wider">Scheduler / Agent Config</h4>
+<!-- Input: Connector Type -->
+<div class="flex flex-col gap-1.5">
+<label class="font-body-sm text-body-sm text-on-surface-variant">Connector Type</label>
+<div class="relative">
+<select class="w-full h-8 pl-2 pr-6 border border-outline-variant rounded-[4px] bg-surface-container-lowest text-body-sm font-body-sm focus:border-primary focus:ring-0 outline-none appearance-none cursor-pointer">
+<option selected="" value="rest_api">REST API Collector</option>
+<option value="graphql">GraphQL Endpoint</option>
+<option value="webhook">Webhook Receiver</option>
+</select>
+<span class="material-symbols-outlined absolute right-2 top-2 text-[14px] text-outline pointer-events-none">expand_more</span>
+</div>
+</div>
+<!-- Input: Interval Seconds -->
+<div class="flex flex-col gap-1.5">
+<label class="font-body-sm text-body-sm text-on-surface-variant">Execution Interval (seconds)</label>
+<input class="w-full h-8 px-2 border border-outline-variant rounded-[4px] bg-surface-container-lowest text-body-sm font-body-sm focus:border-primary focus:ring-0 outline-none" type="number" value="300"/>
+<span class="font-label-mono text-[9px] text-outline mt-0.5">Time between polling cycles. Min: 60s.</span>
+</div>
+<!-- Toggle: Is Enabled -->
+<div class="flex items-center justify-between pt-2">
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm text-on-surface">Enable Scheduler</span>
+<span class="font-label-mono text-[9px] text-outline">Allow autonomous execution</span>
+</div>
+<!-- Custom CSS Toggle (Checked state) -->
+<div class="w-8 h-4 rounded-full bg-primary relative cursor-pointer border border-primary">
+<div class="w-3 h-3 bg-white rounded-full absolute top-[1px] left-[17px] shadow-sm transition-all"></div>
+</div>
+</div>
+</div>
+<div class="h-px bg-outline-variant w-full my-1"></div>
+<!-- Secondary Info (Visual density) -->
+<div class="flex flex-col gap-3">
+<h4 class="font-label-mono text-label-mono text-outline uppercase tracking-wider">Dependencies</h4>
+<div class="flex items-center justify-between p-2 border border-outline-variant rounded-[4px] bg-surface-container">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[14px] text-outline">arrow_downward</span>
+<span class="font-body-sm text-body-sm">Requires: Crawler</span>
+</div>
+<span class="font-label-mono text-[9px] px-1 bg-surface-variant rounded text-on-surface-variant">OK</span>
+</div>
+<div class="flex items-center justify-between p-2 border border-outline-variant rounded-[4px] bg-surface-container">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[14px] text-outline">arrow_upward</span>
+<span class="font-body-sm text-body-sm">Feeds: Analyzer</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="p-4 border-t border-outline-variant bg-surface-container-lowest flex justify-end gap-2">
+<button class="h-7 px-3 bg-surface-container-lowest border border-outline-variant text-on-surface rounded-[4px] font-body-sm text-body-sm font-medium hover:bg-surface-container transition-colors">Discard</button>
+<button class="h-7 px-3 bg-primary text-on-primary rounded-[4px] font-body-sm text-body-sm font-medium hover:bg-surface-tint transition-colors">Save Config</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</body></html>
