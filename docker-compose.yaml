@@ -1,6 +1,8 @@
 services:
   frontend:
     image: ghcr.io/timmlion/graphait-frontend:latest
+    expose:
+      - "80"
     depends_on:
       - api
     restart: unless-stopped
@@ -19,6 +21,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   db:

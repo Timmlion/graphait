@@ -18,6 +18,11 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="Graphait", version="0.1.0", lifespan=lifespan)
     app.include_router(router, prefix="/api/v1")
+
+    @app.get("/api/v1/health", tags=["health"])
+    async def health():
+        return {"status": "ok"}
+
     return app
 
 
