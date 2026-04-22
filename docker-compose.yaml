@@ -1,14 +1,12 @@
 services:
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
+    image: ghcr.io/timmlion/graphait-frontend:latest
     depends_on:
       - api
     restart: unless-stopped
 
   api:
-    build: .
+    image: ghcr.io/timmlion/graphait-api:latest
     expose:
       - "8000"
     environment:
