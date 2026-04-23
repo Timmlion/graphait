@@ -1,65 +1,145 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react'
-import Layout from '../components/Layout'
+import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
 import { tasksApi, type Task, type Comment, type TaskStatus, type TaskPriority } from '../api/tasks'
+import { useAuth } from '../context/AuthContext'
+import Icon from '../components/Icon'
 
-function Icon({ name, size = 16 }: { name: string; size?: number }) {
-  return <span className="material-symbols-outlined" style={{ fontSize: size }}>{name}</span>
+const STATUS_META: Record<TaskStatus, { label: string; group: string; dot: string }> = {
+  todo:             { label: 'To Do',            group: 'Backlog',   dot: 'var(--st-todo)'      },
+  in_progress:      { label: 'In Progress',      group: 'Active',    dot: 'var(--st-progress)'  },
+  in_review:        { label: 'In Review',        group: 'Review',    dot: 'var(--st-review)'    },
+  waiting_approval: { label: 'Waiting Approval', group: 'Review',    dot: 'var(--st-waiting)'   },
+  approved:         { label: 'Approved',         group: 'Resolved',  dot: 'var(--st-approved)'  },
+  rejected:         { label: 'Rejected',         group: 'Resolved',  dot: 'var(--st-rejected)'  },
+  done:             { label: 'Done',             group: 'Resolved',  dot: 'var(--st-done)'      },
+  cancelled:        { label: 'Cancelled',        group: 'Resolved',  dot: 'var(--st-cancelled)' },
 }
 
-const COLUMNS: { key: TaskStatus; label: string; dot: string }[] = [
-  { key: 'todo', label: 'TODO', dot: 'bg-outline' },
-  { key: 'in_progress', label: 'IN PROGRESS', dot: 'bg-primary' },
-  { key: 'waiting_approval', label: 'WAITING APPROVAL', dot: 'bg-tertiary-container' },
-  { key: 'done', label: 'DONE', dot: 'bg-outline' },
-]
+const STATUS_ORDER: TaskStatus[] = ['todo','in_progress','in_review','waiting_approval','approved','rejected','done','cancelled']
+const GROUP_ORDER = ['Backlog','Active','Review','Resolved']
+const GROUP_STATUSES: Record<string, TaskStatus[]> = GROUP_ORDER.reduce((a, g) => {
+  a[g] = STATUS_ORDER.filter(s => STATUS_META[s].group === g)
+  return a
+}, {} as Record<string, TaskStatus[]>)
 
-const PRIORITY_DOT: Record<TaskPriority, string> = {
-  critical: 'bg-error',
-  high: 'bg-error',
-  medium: 'bg-tertiary-container',
-  low: 'bg-outline',
+const PRIORITIES: TaskPriority[] = ['low','medium','high','urgent']
+
+function timeAgo(iso: string) {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`
+  return `${Math.floor(diff/86400)}d ago`
 }
 
-function relativeTime(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
-}
-
-function TaskCard({ task, selected, onClick }: { task: Task; selected: boolean; onClick: () => void }) {
-  const isDone = task.status === 'done'
+function PriorityPip({ level }: { level: TaskPriority }) {
   return (
-    <div
-      onClick={onClick}
-      className={`bg-surface-container-lowest border rounded p-3 cursor-pointer relative overflow-hidden transition-colors
-        ${selected
-          ? 'border-primary shadow-[0_0_0_1px_rgba(53,37,205,0.1)]'
-          : 'border-surface-variant hover:border-outline-variant'
-        }
-        ${isDone ? 'opacity-60' : ''}
-      `}
+    <span className="prio" data-level={level} title={`Priority: ${level}`}>
+      <span className="prio__bars"><i/><i/><i/></span>
+    </span>
+  )
+}
+
+function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
+  return (
+    <article className="taskcard" onClick={() => onOpen(task)}>
+      <header className="taskcard__head">
+        <span className="taskcard__num mono">#{task.number}</span>
+        <PriorityPip level={task.priority} />
+      </header>
+      <h3 className="taskcard__title">{task.title}</h3>
+      <footer className="taskcard__foot">
+        <span className="taskcard__assignee">{task.assignee_id ? 'Assigned' : 'Unassigned'}</span>
+        <span className="taskcard__spacer" />
+        <span className="taskcard__time mono">{timeAgo(task.updated_at)}</span>
+      </footer>
+    </article>
+  )
+}
+
+function Column({ status, tasks, onOpen, onCreate, dragOver, onDragOver, onDragLeave, onDrop }: {
+  status: TaskStatus; tasks: Task[]; onOpen: (t: Task) => void; onCreate: (s: TaskStatus) => void
+  dragOver: boolean; onDragOver: () => void; onDragLeave: () => void; onDrop: () => void
+}) {
+  const meta = STATUS_META[status]
+  return (
+    <div className={`col${dragOver ? ' col--over' : ''}`}
+      onDragOver={e => { e.preventDefault(); onDragOver() }}
+      onDragLeave={onDragLeave}
+      onDrop={e => { e.preventDefault(); onDrop() }}
     >
-      {selected && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
-      <div className={`flex items-start justify-between mb-2 ${selected ? 'pl-1' : ''}`}>
-        <span className={`font-label-mono text-label-mono text-on-surface-variant ${isDone ? 'line-through' : ''}`}>
-          #{task.number}
-        </span>
-        <span className={`w-2 h-2 rounded-full ${PRIORITY_DOT[task.priority]}`} title={task.priority} />
+      <header className="col__head">
+        <div className="col__head-l">
+          <span className="badge badge--dot col__badge" style={{ '--dot': meta.dot } as React.CSSProperties}>
+            {meta.label}
+          </span>
+          <span className="col__count mono">{tasks.length}</span>
+        </div>
+        <button className="btn btn--ghost btn--icon btn--sm" title={`New in ${meta.label}`} onClick={() => onCreate(status)}>
+          <Icon name="plus" size={12} />
+        </button>
+      </header>
+      <div className="col__body">
+        {tasks.map(t => (
+          <div key={t.id} draggable onDragStart={e => e.dataTransfer.setData('text/plain', t.id)}>
+            <TaskCard task={t} onOpen={onOpen} />
+          </div>
+        ))}
+        {tasks.length === 0 && <div className="col__empty mono">—</div>}
       </div>
-      <h3 className={`font-body-main text-body-main font-semibold text-on-surface mb-3 leading-tight ${selected ? 'pl-1' : ''} ${isDone ? 'line-through text-on-surface-variant font-medium' : ''}`}>
-        {task.title}
-      </h3>
     </div>
   )
 }
 
-function NewTaskModal({ onClose, onCreated }: { onClose: () => void; onCreated: (t: Task) => void }) {
+function GroupRail({ group, tasks, collapsed, onToggle, onOpen, onCreate, dragOver, onDragOver, onDragLeave, onMove }: {
+  group: string; tasks: Task[]; collapsed: boolean; onToggle: () => void
+  onOpen: (t: Task) => void; onCreate: (s: TaskStatus) => void
+  dragOver: string | null; onDragOver: (s: TaskStatus) => void; onDragLeave: () => void
+  onMove: (taskId: string, status: TaskStatus) => void
+}) {
+  const statuses = GROUP_STATUSES[group]
+  const total = statuses.reduce((a, s) => a + tasks.filter(t => t.status === s).length, 0)
+  const subnames = statuses.map(s => STATUS_META[s].label).join(' · ')
+
+  return (
+    <section className={`rail rail--${group.toLowerCase()}${collapsed ? ' rail--collapsed' : ''}`}>
+      <header className="rail__head" onClick={onToggle}>
+        <div className="rail__head-l">
+          <Icon name={collapsed ? 'chevRight' : 'chevDown'} size={12} />
+          <span className="rail__name">{group}</span>
+          <span className="rail__count mono">{total}</span>
+          <span className="rail__subnames">{subnames}</span>
+        </div>
+      </header>
+      {!collapsed && (
+        <div className="rail__cols">
+          {statuses.map(s => (
+            <Column
+              key={s}
+              status={s}
+              tasks={tasks.filter(t => t.status === s)}
+              onOpen={onOpen}
+              onCreate={onCreate}
+              dragOver={dragOver === s}
+              onDragOver={() => onDragOver(s)}
+              onDragLeave={onDragLeave}
+              onDrop={() => {
+                const id = (window as any).__dragTaskId
+                if (id) onMove(id, s)
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function CreateTaskModal({ onClose, onCreated, defaultStatus }: {
+  onClose: () => void; onCreated: (t: Task) => void; defaultStatus?: TaskStatus
+}) {
   const [title, setTitle] = useState('')
   const [priority, setPriority] = useState<TaskPriority>('medium')
+  const [status, setStatus] = useState<TaskStatus>(defaultStatus || 'todo')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -69,7 +149,12 @@ function NewTaskModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
     setLoading(true)
     try {
       const task = await tasksApi.create({ title: title.trim(), priority })
-      onCreated(task)
+      if (status !== 'todo') {
+        const updated = await tasksApi.update(task.id, { status })
+        onCreated(updated)
+      } else {
+        onCreated(task)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create task')
     } finally {
@@ -78,45 +163,45 @@ function NewTaskModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
-      <div className="w-[420px] bg-surface-container-lowest border border-outline-variant rounded-xl p-lg shadow-lg flex flex-col gap-md">
-        <div className="flex items-center justify-between">
-          <span className="font-label-mono text-label-mono text-on-surface-variant uppercase">New Task</span>
-          <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface"><Icon name="close" /></button>
+    <div className="modal" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal__panel">
+        <div className="modal__head">
+          <div className="eyebrow">New task</div>
+          <h2>Create a task</h2>
+          <button className="btn btn--ghost btn--icon btn--sm modal__close" onClick={onClose}>
+            <Icon name="close" size={14} />
+          </button>
         </div>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-md">
-          <div className="flex flex-col gap-xs">
-            <label className="font-label-mono text-label-mono text-on-surface-variant uppercase">Title</label>
-            <input
-              autoFocus
-              className="w-full h-[32px] px-sm border border-outline-variant rounded outline-none focus:border-primary bg-transparent font-body-main text-body-main text-on-background"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="Task title…"
-              required
-            />
+        <form onSubmit={handleSubmit}>
+          <div className="modal__body">
+            <div className="field">
+              <label className="label">Title</label>
+              <input autoFocus className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Task title…" required />
+            </div>
+            <div className="modal__grid">
+              <div className="field">
+                <label className="label">Priority</label>
+                <select className="select" value={priority} onChange={e => setPriority(e.target.value as TaskPriority)}>
+                  {PRIORITIES.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label className="label">Status</label>
+                <select className="select" value={status} onChange={e => setStatus(e.target.value as TaskStatus)}>
+                  {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+                </select>
+              </div>
+            </div>
+            {error && <div className="auth__error"><Icon name="alert" size={13}/><span>{error}</span></div>}
           </div>
-          <div className="flex flex-col gap-xs">
-            <label className="font-label-mono text-label-mono text-on-surface-variant uppercase">Priority</label>
-            <select
-              className="h-[32px] px-sm border border-outline-variant rounded outline-none focus:border-primary bg-transparent font-body-main text-body-main text-on-background"
-              value={priority}
-              onChange={e => setPriority(e.target.value as TaskPriority)}
-            >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="critical">Critical</option>
-            </select>
-          </div>
-          {error && <p className="font-body-sm text-body-sm text-error">{error}</p>}
-          <div className="flex justify-end gap-sm">
-            <button type="button" onClick={onClose} className="h-7 px-3 border border-outline-variant rounded font-body-sm text-body-sm text-on-surface hover:bg-surface-container transition-colors">
-              Cancel
-            </button>
-            <button type="submit" disabled={loading} className="h-7 px-3 bg-primary text-on-primary rounded font-body-sm text-body-sm hover:opacity-90 transition-opacity disabled:opacity-50">
-              {loading ? 'Creating…' : 'Create'}
-            </button>
+          <div className="modal__foot">
+            <div />
+            <div style={{ display:'flex', gap:8 }}>
+              <button type="button" className="btn" onClick={onClose}>Cancel</button>
+              <button type="submit" className="btn btn--primary" disabled={loading}>
+                {loading ? 'Creating…' : 'Create task'}
+              </button>
+            </div>
           </div>
         </form>
       </div>
@@ -124,10 +209,12 @@ function NewTaskModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
   )
 }
 
-function TaskDetailPanel({ task, onClose, onUpdated }: { task: Task; onClose: () => void; onUpdated: (t: Task) => void }) {
+function TaskDrawer({ task, tasks, onClose, onUpdated }: {
+  task: Task; tasks: Task[]; onClose: () => void; onUpdated: (t: Task) => void
+}) {
   const [comments, setComments] = useState<Comment[]>([])
   const [commentText, setCommentText] = useState('')
-  const [sendingComment, setSendingComment] = useState(false)
+  const [sending, setSending] = useState(false)
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description ?? '')
 
@@ -135,184 +222,140 @@ function TaskDetailPanel({ task, onClose, onUpdated }: { task: Task; onClose: ()
     setTitle(task.title)
     setDescription(task.description ?? '')
     tasksApi.listComments(task.id).then(setComments).catch(() => {})
-  }, [task.id, task.title, task.description])
+  }, [task.id])
 
-  const updateStatus = async (status: TaskStatus) => {
-    const updated = await tasksApi.update(task.id, { status })
-    onUpdated(updated)
-  }
-
-  const updatePriority = async (priority: TaskPriority) => {
-    const updated = await tasksApi.update(task.id, { priority })
+  const update = async (patch: Parameters<typeof tasksApi.update>[1]) => {
+    const updated = await tasksApi.update(task.id, patch)
     onUpdated(updated)
   }
 
   const saveTitle = async () => {
-    if (title.trim() && title !== task.title) {
-      const updated = await tasksApi.update(task.id, { title: title.trim() })
-      onUpdated(updated)
-    }
+    if (title.trim() && title !== task.title) await update({ title: title.trim() })
   }
-
-  const saveDescription = async () => {
-    if (description !== (task.description ?? '')) {
-      const updated = await tasksApi.update(task.id, { description })
-      onUpdated(updated)
-    }
+  const saveDesc = async () => {
+    if (description !== (task.description ?? '')) await update({ description })
   }
 
   const sendComment = async (e: FormEvent) => {
     e.preventDefault()
     if (!commentText.trim()) return
-    setSendingComment(true)
+    setSending(true)
     try {
       const c = await tasksApi.addComment(task.id, commentText.trim())
       setComments(prev => [...prev, c])
       setCommentText('')
-    } finally {
-      setSendingComment(false)
-    }
-  }
-
-  const statusLabel: Record<TaskStatus, string> = {
-    todo: 'Todo',
-    in_progress: 'In Progress',
-    waiting_approval: 'Waiting Approval',
-    done: 'Done',
+    } finally { setSending(false) }
   }
 
   return (
-    <aside className="fixed top-12 right-0 w-[320px] h-[calc(100vh-48px)] bg-surface-container-lowest border-l border-surface-variant flex flex-col z-10">
-      {/* Header */}
-      <div className="h-14 border-b border-surface-variant flex items-center justify-between px-md shrink-0">
-        <span className="font-label-mono text-label-mono text-on-surface-variant">TASK #{task.number}</span>
-        <div className="flex gap-2 text-on-surface-variant">
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container transition-colors">
-            <Icon name="close" />
-          </button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto no-scrollbar p-md flex flex-col gap-lg">
-        {/* Title */}
-        <div>
-          <textarea
-            className="w-full bg-transparent border-none p-0 resize-none font-h1 text-h1 font-semibold text-on-surface focus:ring-0 mb-4 min-h-[48px]"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            onBlur={saveTitle}
-            rows={2}
-          />
-          <div className="grid grid-cols-[100px_1fr] gap-y-3 items-center text-body-sm font-body-sm">
-            <div className="text-on-surface-variant">Status</div>
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${task.status === 'in_progress' ? 'bg-primary' : task.status === 'done' ? 'bg-outline' : task.status === 'waiting_approval' ? 'bg-tertiary-container' : 'bg-outline'}`} />
-              <select
-                className="bg-transparent border-none p-0 text-on-surface focus:ring-0 cursor-pointer text-body-sm font-body-sm h-6"
-                value={task.status}
-                onChange={e => updateStatus(e.target.value as TaskStatus)}
-              >
-                <option value="todo">Todo</option>
-                <option value="in_progress">In Progress</option>
-                <option value="waiting_approval">Waiting Approval</option>
-                <option value="done">Done</option>
-              </select>
-            </div>
-            <div className="text-on-surface-variant">Priority</div>
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${PRIORITY_DOT[task.priority]}`} />
-              <select
-                className="bg-transparent border-none p-0 text-on-surface focus:ring-0 cursor-pointer text-body-sm font-body-sm h-6"
-                value={task.priority}
-                onChange={e => updatePriority(e.target.value as TaskPriority)}
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </div>
+    <>
+      <div className="drawer__scrim" onClick={onClose} />
+      <div className="drawer">
+        <div className="drawer__head">
+          <div className="drawer__crumbs">
+            <span className="mono">#{task.number}</span>
+            <span style={{color:'var(--ink-4)'}}>·</span>
+            <span className="badge badge--dot" style={{'--dot': STATUS_META[task.status].dot} as React.CSSProperties}>
+              {STATUS_META[task.status].label}
+            </span>
+          </div>
+          <div className="drawer__actions">
+            <button className="btn btn--ghost btn--icon btn--sm" onClick={onClose} title="Close">
+              <Icon name="close" size={14} />
+            </button>
           </div>
         </div>
 
-        <div className="w-full h-px bg-surface-variant" />
+        <div className="drawer__scroll">
+          <div className="drawer__titlewrap">
+            <textarea
+              className="drawer__title"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              onBlur={saveTitle}
+              rows={2}
+            />
+          </div>
 
-        {/* Description */}
-        <div>
-          <h4 className="font-body-sm text-body-sm font-medium text-on-surface mb-2">Description</h4>
-          <textarea
-            className="w-full bg-transparent border border-transparent hover:border-outline-variant focus:border-primary rounded p-2 resize-none font-body-main text-body-main text-on-surface-variant focus:ring-0 transition-colors min-h-[60px]"
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            onBlur={saveDescription}
-            placeholder="Add a description…"
-            rows={3}
-          />
-        </div>
+          <div className="drawer__metarow">
+            <div className="metafield">
+              <div className="label">Status</div>
+              <select className="select" value={task.status} onChange={e => update({ status: e.target.value as TaskStatus })}>
+                {STATUS_ORDER.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+              </select>
+            </div>
+            <div className="metafield">
+              <div className="label">Priority</div>
+              <select className="select" value={task.priority} onChange={e => update({ priority: e.target.value as TaskPriority })}>
+                {PRIORITIES.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+              </select>
+            </div>
+          </div>
 
-        <div className="w-full h-px bg-surface-variant" />
+          <div className="drawer__section">
+            <div className="eyebrow">Description</div>
+            <textarea
+              className="drawer__desc"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              onBlur={saveDesc}
+              placeholder="Add a description…"
+              rows={4}
+            />
+          </div>
 
-        {/* Comments */}
-        <div className="flex-1 flex flex-col">
-          <h4 className="font-body-sm text-body-sm font-medium text-on-surface mb-4">
-            Activity {comments.length > 0 && <span className="text-on-surface-variant">({comments.length})</span>}
-          </h4>
-          <div className="space-y-4 mb-4">
-            {comments.length === 0 && (
-              <p className="font-body-sm text-body-sm text-outline">No comments yet.</p>
-            )}
-            {comments.map(c => (
-              <div key={c.id} className="flex gap-3">
-                <div className="w-6 h-6 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-label-mono text-label-mono shrink-0">
-                  {c.author_id.slice(0, 2).toUpperCase()}
+          <div className="drawer__section">
+            <div className="drawer__subhead">
+              <div className="eyebrow">Activity</div>
+              {comments.length > 0 && <span style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}}>{comments.length}</span>}
+            </div>
+            <div className="comments">
+              {comments.length === 0 && <p style={{color:'var(--ink-3)',fontSize:'var(--fs-sm)'}}>No comments yet.</p>}
+              {comments.map(c => (
+                <div key={c.id} className="comment">
+                  <div className="avatar avatar--human avatar--sm">{c.author_id.slice(0,1).toUpperCase()}</div>
+                  <div className="comment__body">
+                    <header>
+                      <span className="comment__author">{c.author_id.slice(0,8)}</span>
+                      <span className="comment__time">{timeAgo(c.created_at)}</span>
+                    </header>
+                    <div className="comment__text">{c.content}</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="font-body-sm text-body-sm font-medium text-on-surface">{c.author_id.slice(0, 8)}</span>
-                    <span className="font-body-sm text-body-sm text-on-surface-variant text-[11px]">{relativeTime(c.created_at)}</span>
-                  </div>
-                  <div className="bg-surface rounded p-2 font-body-main text-body-main text-on-surface-variant border border-surface-variant">
-                    {c.content}
-                  </div>
+              ))}
+            </div>
+
+            <form onSubmit={sendComment}>
+              <div className="compose">
+                <textarea
+                  className="compose__input"
+                  placeholder="Write a comment…"
+                  rows={2}
+                  value={commentText}
+                  onChange={e => setCommentText(e.target.value)}
+                />
+                <div className="compose__foot">
+                  <button type="submit" className="btn btn--primary btn--sm" disabled={sending || !commentText.trim()}>
+                    {sending ? '…' : 'Send'}
+                  </button>
                 </div>
               </div>
-            ))}
+            </form>
           </div>
         </div>
       </div>
-
-      {/* Comment input */}
-      <div className="p-md border-t border-surface-variant bg-surface-container-lowest shrink-0">
-        <form onSubmit={sendComment} className="flex flex-col gap-2">
-          <div className="border border-surface-variant rounded focus-within:border-primary bg-surface transition-colors">
-            <textarea
-              className="w-full bg-transparent border-none p-2 font-body-main text-body-main text-on-surface placeholder-on-surface-variant focus:ring-0 resize-none"
-              placeholder="Write a comment…"
-              rows={2}
-              value={commentText}
-              onChange={e => setCommentText(e.target.value)}
-            />
-            <div className="flex justify-end p-1">
-              <button
-                type="submit"
-                disabled={sendingComment || !commentText.trim()}
-                className="h-6 px-3 bg-primary text-on-primary rounded font-body-sm text-body-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
-              >
-                Send
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </aside>
+    </>
   )
 }
 
 export default function BoardPage() {
+  const { user } = useAuth()
   const [tasks, setTasks] = useState<Task[]>([])
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const [showNewTask, setShowNewTask] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [creating, setCreating] = useState<TaskStatus | null>(null)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [dragOver, setDragOver] = useState<TaskStatus | null>(null)
 
   const loadTasks = useCallback(() => {
     tasksApi.list().then(setTasks).catch(() => {}).finally(() => setLoading(false))
@@ -327,83 +370,74 @@ export default function BoardPage() {
 
   const handleCreated = (task: Task) => {
     setTasks(prev => [...prev, task])
-    setShowNewTask(false)
+    setCreating(null)
     setSelectedTask(task)
   }
 
-  const grouped = (status: TaskStatus) => tasks.filter(t => t.status === status)
+  const moveTask = async (taskId: string, status: TaskStatus) => {
+    const task = tasks.find(t => t.id === taskId)
+    if (!task || task.status === status) return
+    const updated = await tasksApi.update(taskId, { status }).catch(() => null)
+    if (updated) setTasks(prev => prev.map(t => t.id === taskId ? updated : t))
+    setDragOver(null)
+  }
+
+  const toggleGroup = (g: string) => setCollapsed(c => ({ ...c, [g]: !c[g] }))
+
+  const openTaskCount = tasks.filter(t => !['done','cancelled','approved','rejected'].includes(t.status)).length
 
   return (
-    <Layout>
-      <div className={`flex-1 flex flex-col h-full overflow-hidden ${selectedTask ? 'mr-[320px]' : ''}`}>
-        {/* Board header */}
-        <div className="h-14 border-b border-surface-variant flex items-center justify-between px-lg bg-surface-container-lowest shrink-0">
-          <div className="flex items-center gap-md">
-            <h1 className="font-h1 text-h1 text-on-surface">Tasks</h1>
-            <span className="px-2 py-0.5 bg-surface-container rounded-sm font-label-mono text-label-mono text-on-surface-variant">
-              {tasks.length} total
-            </span>
-          </div>
-          <button
-            onClick={() => setShowNewTask(true)}
-            className="h-7 px-3 bg-primary text-on-primary rounded font-body-sm text-body-sm font-medium hover:opacity-90 transition-opacity"
-          >
-            New Task
+    <div style={{ display:'flex', flexDirection:'column', height:'100vh', minHeight:0 }}>
+      <header className="topbar">
+        <div className="topbar__title">Board</div>
+        <span className="topbar__crumb mono">{(user as any)?.org_slug || 'workspace'}.graphait / board</span>
+        <div className="topbar__right">
+          <span style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}} className="mono">{openTaskCount} open</span>
+          <button className="btn btn--primary btn--sm" onClick={() => setCreating('todo')}>
+            <Icon name="plus" size={12}/>New task
           </button>
         </div>
+      </header>
 
-        {/* Kanban */}
-        <div className="flex-1 overflow-x-auto overflow-y-hidden p-lg flex gap-lg">
-          {loading ? (
-            <div className="flex-1 flex items-center justify-center text-on-surface-variant font-body-sm text-body-sm">Loading…</div>
-          ) : (
-            COLUMNS.map(col => (
-              <div key={col.key} className={`w-[280px] shrink-0 flex flex-col h-full ${col.key === 'done' && grouped(col.key).length === 0 ? 'opacity-50' : ''}`}>
-                <div className="flex items-center justify-between mb-sm shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${col.dot}`} />
-                    <span className="font-label-mono text-label-mono text-on-surface-variant">{col.label}</span>
-                    <span className="font-body-sm text-body-sm text-outline px-1">{grouped(col.key).length}</span>
-                  </div>
-                  {col.key !== 'done' && (
-                    <button onClick={() => setShowNewTask(true)} className="text-on-surface-variant hover:text-on-surface">
-                      <Icon name="add" />
-                    </button>
-                  )}
-                </div>
-                <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 pb-lg">
-                  {grouped(col.key).map(task => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      selected={selectedTask?.id === task.id}
-                      onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
-                    />
-                  ))}
-                  {grouped(col.key).length === 0 && (
-                    <div className="border border-dashed border-outline-variant rounded p-3 text-center font-body-sm text-body-sm text-outline">
-                      Empty
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
+      {loading ? (
+        <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--ink-3)' }}>Loading…</div>
+      ) : (
+        <div className="board">
+          {GROUP_ORDER.map(group => (
+            <GroupRail
+              key={group}
+              group={group}
+              tasks={tasks}
+              collapsed={!!collapsed[group]}
+              onToggle={() => toggleGroup(group)}
+              onOpen={t => setSelectedTask(prev => prev?.id === t.id ? null : t)}
+              onCreate={setCreating}
+              dragOver={dragOver}
+              onDragOver={setDragOver}
+              onDragLeave={() => setDragOver(null)}
+              onMove={moveTask}
+            />
+          ))}
         </div>
-      </div>
+      )}
 
       {selectedTask && (
-        <TaskDetailPanel
+        <TaskDrawer
           key={selectedTask.id}
           task={selectedTask}
+          tasks={tasks}
           onClose={() => setSelectedTask(null)}
           onUpdated={handleUpdated}
         />
       )}
 
-      {showNewTask && (
-        <NewTaskModal onClose={() => setShowNewTask(false)} onCreated={handleCreated} />
+      {creating !== null && (
+        <CreateTaskModal
+          defaultStatus={creating}
+          onClose={() => setCreating(null)}
+          onCreated={handleCreated}
+        />
       )}
-    </Layout>
+    </div>
   )
 }

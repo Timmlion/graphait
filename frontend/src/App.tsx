@@ -1,27 +1,55 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider, useAuth } from './context/AuthContext'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { AuthProvider, ThemeProvider, useAuth } from './context/AuthContext'
+import { Sidebar } from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import BoardPage from './pages/BoardPage'
 import GraphPage from './pages/GraphPage'
+import { useEffect } from 'react'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { token, loading } = useAuth()
-  if (loading) return <div className="h-screen flex items-center justify-center text-on-surface-variant text-body-sm">Loading…</div>
-  if (!token) return <Navigate to="/login" replace />
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (!loading && !token) navigate('/login', { replace: true })
+  }, [token, loading, navigate])
+  if (loading) return null
+  if (!token) return null
   return <>{children}</>
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  const { token } = useAuth()
+  if (!token) return <div className="app app--auth">{children}</div>
+  return (
+    <div className="app app--shell">
+      <Sidebar />
+      <main className="app__main">{children}</main>
+    </div>
+  )
+}
+
+function AppRoutes() {
+  const { token } = useAuth()
+  return (
+    <Shell>
+      <Routes>
+        <Route path="/login" element={token ? <Navigate to="/board" replace /> : <LoginPage />} />
+        <Route path="/board" element={<RequireAuth><BoardPage /></RequireAuth>} />
+        <Route path="/agents" element={<RequireAuth><GraphPage /></RequireAuth>} />
+        <Route path="*" element={<Navigate to={token ? '/board' : '/login'} replace />} />
+      </Routes>
+    </Shell>
+  )
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/board" element={<RequireAuth><BoardPage /></RequireAuth>} />
-          <Route path="/agents" element={<RequireAuth><GraphPage /></RequireAuth>} />
-          <Route path="*" element={<Navigate to="/board" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
   )
 }

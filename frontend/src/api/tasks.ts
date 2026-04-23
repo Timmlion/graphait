@@ -1,7 +1,7 @@
 import { apiFetch } from './client'
 
-export type TaskStatus = 'todo' | 'in_progress' | 'waiting_approval' | 'done'
-export type TaskPriority = 'low' | 'medium' | 'high' | 'critical'
+export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'waiting_approval' | 'approved' | 'rejected' | 'done' | 'cancelled'
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
 export interface Task {
   id: string
