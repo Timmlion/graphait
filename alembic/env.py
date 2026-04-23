@@ -15,8 +15,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-if db_url := os.environ.get("DATABASE_URL"):
-    config.set_main_option("sqlalchemy.url", db_url)
+from graphait.config import settings
+config.set_main_option("sqlalchemy.url", settings.database_url)
 
 # add your model's MetaData object here
 # for 'autogenerate' support

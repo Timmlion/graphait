@@ -8,11 +8,11 @@ services:
     restart: unless-stopped
 
   api:
-    image: ghcr.io/timmlion/graphait-api:4300094
+    image: ghcr.io/timmlion/graphait-api:fix-dburl
     expose:
       - "8000"
     environment:
-      DATABASE_URL: postgresql://graphait:${POSTGRES_PASSWORD:-graphait}@db:5432/graphait
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-graphait}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
