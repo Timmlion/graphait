@@ -121,7 +121,19 @@ async def run_agent_tick(agent_id: uuid.UUID) -> None:
 
         context = _build_context(db, agent)
         connector = CONNECTOR_MAP[agent.connector_type]
-        actions = await connector.run(context, agent.connector_config or {})
+
+        # Merge org-level settings as fallback for connector_config
+        agent_cfg = dict(agent.connector_config or {})
+        if not agent_cfg.get("api_key"):
+            org_settings = agent.organization.settings or {}
+            if org_settings.get("openrouter_api_key"):
+                agent_cfg["api_key"] = org_settings["openrouter_api_key"]
+        if not agent_cfg.get("model"):
+            org_settings = agent.organization.settings or {}
+            if org_settings.get("default_model"):
+                agent_cfg["model"] = org_settings["default_model"]
+
+        actions = await connector.run(context, agent_cfg)
 
         for action in actions:
             await _execute_action(db, agent, action)

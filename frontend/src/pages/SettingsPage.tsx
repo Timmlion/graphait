@@ -1,72 +1,101 @@
 import { useState, useEffect } from 'react'
-import { loadSettings, saveSettings, OPENROUTER_MODELS, type AppSettings } from '../api/settings'
+import { saveSettings, OPENROUTER_MODELS } from '../api/settings'
+import { orgApi, type OrgSettings } from '../api/org'
 import Icon from '../components/Icon'
 
-type SaveState = 'idle' | 'saved' | 'error'
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<AppSettings>(loadSettings)
-  const [showKey, setShowKey]   = useState(false)
+  const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null)
+  const [apiKey, setApiKey]           = useState('')
+  const [model, setModel]             = useState('anthropic/claude-sonnet-4-5')
   const [customModel, setCustomModel] = useState('')
-  const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [showKey, setShowKey]         = useState(false)
+  const [saveState, setSaveState]     = useState<SaveState>('idle')
+  const [loading, setLoading]         = useState(true)
 
-  const isCustom = settings.default_model === '__custom__' ||
-    !OPENROUTER_MODELS.some(m => m.id === settings.default_model || m.id === '__custom__') &&
-    settings.default_model !== ''
+  const isCustom = model === '__custom__' ||
+    (!OPENROUTER_MODELS.some(m => m.id === model && m.id !== '__custom__') && model !== '')
 
   useEffect(() => {
-    const loaded = loadSettings()
-    const knownId = OPENROUTER_MODELS.find(m => m.id === loaded.default_model && m.id !== '__custom__')
-    if (!knownId && loaded.default_model) {
-      setCustomModel(loaded.default_model)
-      setSettings({ ...loaded, default_model: '__custom__' })
-    } else {
-      setSettings(loaded)
-    }
+    orgApi.getSettings()
+      .then(s => {
+        setOrgSettings(s)
+        const key = s.openrouter_api_key ?? ''
+        const mdl = s.default_model ?? 'anthropic/claude-sonnet-4-5'
+        setApiKey(key)
+        const known = OPENROUTER_MODELS.find(m => m.id === mdl && m.id !== '__custom__')
+        if (!known && mdl) {
+          setCustomModel(mdl)
+          setModel('__custom__')
+        } else {
+          setModel(mdl)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [])
 
-  function handleSave() {
-    const finalModel = settings.default_model === '__custom__' ? customModel.trim() : settings.default_model
+  async function handleSave() {
+    const finalModel = model === '__custom__' ? customModel.trim() : model
     if (!finalModel) {
       setSaveState('error')
       setTimeout(() => setSaveState('idle'), 2500)
       return
     }
-    saveSettings({ ...settings, default_model: finalModel })
-    setSaveState('saved')
-    setTimeout(() => setSaveState('idle'), 2000)
+    setSaveState('saving')
+    try {
+      const updated = await orgApi.patchSettings({
+        openrouter_api_key: apiKey,
+        default_model: finalModel,
+      })
+      setOrgSettings(updated)
+      // Mirror to localStorage so connector config picker has a local fallback
+      saveSettings({ openrouter_api_key: apiKey, default_model: finalModel })
+      setSaveState('saved')
+    } catch {
+      setSaveState('error')
+    } finally {
+      setTimeout(() => setSaveState('idle'), 2500)
+    }
   }
 
-  function set<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
-    setSettings(prev => ({ ...prev, [key]: value }))
+  if (loading) {
+    return (
+      <div className="settings">
+        <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-sm)' }}>Loading…</div>
+      </div>
+    )
   }
 
   return (
     <div className="settings">
       <div className="settings__header">
         <h1 className="settings__title">Settings</h1>
-        <p className="settings__sub">Workspace configuration. Stored locally in your browser.</p>
+        <p className="settings__sub">
+          Org: <span className="mono" style={{ color: 'var(--ink-2)' }}>{orgSettings?.org_slug}.graphait</span>
+          {' · '}API key stored server-side, never exposed in browser storage.
+        </p>
       </div>
 
       <div className="settings__body">
-        {/* ── AI Provider ── */}
         <section className="settings__section">
           <div className="settings__section-head">
             <Icon name="spark" size={14} />
-            <span className="settings__section-title">AI Provider</span>
+            <span className="settings__section-title">AI Provider — OpenRouter</span>
           </div>
 
           <div className="settings__fields">
             <div className="field">
-              <label className="label" htmlFor="or-key">OpenRouter API Key</label>
+              <label className="label" htmlFor="or-key">API Key</label>
               <div className="settings__key-wrap">
                 <input
                   id="or-key"
                   className="input"
                   type={showKey ? 'text' : 'password'}
                   placeholder="sk-or-v1-…"
-                  value={settings.openrouter_api_key}
-                  onChange={e => set('openrouter_api_key', e.target.value)}
+                  value={apiKey}
+                  onChange={e => setApiKey(e.target.value)}
                   spellCheck={false}
                   autoComplete="off"
                 />
@@ -74,13 +103,14 @@ export default function SettingsPage() {
                   className="btn btn--ghost btn--icon btn--sm settings__eye"
                   type="button"
                   onClick={() => setShowKey(v => !v)}
-                  title={showKey ? 'Hide key' : 'Show key'}
+                  title={showKey ? 'Hide' : 'Show'}
                 >
                   <Icon name={showKey ? 'eyeOff' : 'eye'} size={13} />
                 </button>
               </div>
               <p className="settings__hint">
                 Get your key at <span className="mono" style={{ color: 'var(--accent)' }}>openrouter.ai/keys</span>
+                {' · '}Used as fallback for all agents that don't have their own key.
               </p>
             </div>
 
@@ -89,8 +119,8 @@ export default function SettingsPage() {
               <select
                 id="or-model"
                 className="select"
-                value={settings.default_model}
-                onChange={e => set('default_model', e.target.value)}
+                value={model}
+                onChange={e => setModel(e.target.value)}
               >
                 {OPENROUTER_MODELS.map(m => (
                   <option key={m.id} value={m.id}>
@@ -98,9 +128,10 @@ export default function SettingsPage() {
                   </option>
                 ))}
               </select>
+              <p className="settings__hint">Used as fallback for agents that don't have a model set.</p>
             </div>
 
-            {(settings.default_model === '__custom__' || isCustom) && (
+            {(model === '__custom__' || isCustom) && (
               <div className="field">
                 <label className="label" htmlFor="or-custom">Custom Model ID</label>
                 <input
@@ -112,19 +143,21 @@ export default function SettingsPage() {
                   onChange={e => setCustomModel(e.target.value)}
                   spellCheck={false}
                 />
-                <p className="settings__hint">
-                  Full OpenRouter model ID, e.g. <span className="mono">mistralai/mixtral-8x22b</span>
-                </p>
               </div>
             )}
 
             <div className="settings__row">
-              <button className="btn btn--primary" onClick={handleSave}>
-                {saveState === 'saved' ? <><Icon name="check" size={13} /> Saved</> :
-                 saveState === 'error' ? <><Icon name="alert" size={13} /> Fix model ID</> :
+              <button
+                className="btn btn--primary"
+                onClick={handleSave}
+                disabled={saveState === 'saving'}
+              >
+                {saveState === 'saving' ? 'Saving…' :
+                 saveState === 'saved'  ? <><Icon name="check" size={13}/> Saved</> :
+                 saveState === 'error'  ? <><Icon name="alert" size={13}/> Error</> :
                  'Save settings'}
               </button>
-              {settings.openrouter_api_key && saveState === 'idle' && (
+              {apiKey && saveState === 'idle' && (
                 <span className="settings__status">
                   <span className="dot dot--ok" />
                   Key configured
