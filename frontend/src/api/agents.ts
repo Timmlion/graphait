@@ -32,6 +32,7 @@ export const agentsApi = {
   update: (id: string, body: Partial<Agent>) =>
     apiFetch<Agent>(`/agents/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: (id: string) => apiFetch<void>(`/agents/${id}`, { method: 'DELETE' }),
+  run: (id: string) => apiFetch<{ status: string; agent_id: string }>(`/agents/${id}/run`, { method: 'POST' }),
 }
 
 export const schedulesApi = {

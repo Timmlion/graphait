@@ -52,6 +52,7 @@ export function Sidebar() {
         <nav className="sidebar__nav">
           <SideNavLink to="/board"  icon="board"  label="Board" />
           <SideNavLink to="/agents" icon="agents" label="Agents" />
+          <SideNavLink to="/inbox"  icon="human"  label="Inbox" />
         </nav>
       </div>
 

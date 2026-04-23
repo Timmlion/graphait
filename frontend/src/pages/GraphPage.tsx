@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react'
 import { agentsApi, schedulesApi, type Agent, type Schedule } from '../api/agents'
 import { graphApi, type AgentRelationship } from '../api/graph'
+import { loadSettings, OPENROUTER_MODELS } from '../api/settings'
 import { useAuth } from '../context/AuthContext'
 import Icon from '../components/Icon'
 
@@ -217,20 +218,104 @@ function AgentListView({ agents, relationships, selectedId, onSelect }: {
 }
 
 /* ─── Config panel ─── */
+const DEFAULT_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+
+function ConnectorConfig({ agent, onUpdate }: { agent: Agent; onUpdate: (patch: Partial<Agent>) => void }) {
+  const globalSettings = loadSettings()
+  const cfg = (agent.connector_config || {}) as Record<string, string>
+
+  const [apiKey, setApiKey]     = useState(cfg.api_key ?? globalSettings.openrouter_api_key ?? '')
+  const [model, setModel]       = useState(cfg.model ?? globalSettings.default_model ?? 'anthropic/claude-sonnet-4-5')
+  const [apiUrl, setApiUrl]     = useState(cfg.api_url ?? DEFAULT_API_URL)
+  const [showKey, setShowKey]   = useState(false)
+  const [customModel, setCustomModel] = useState('')
+
+  const isCustomModel = !OPENROUTER_MODELS.some(m => m.id === model && m.id !== '__custom__')
+
+  useEffect(() => {
+    const c = (agent.connector_config || {}) as Record<string, string>
+    setApiKey(c.api_key ?? globalSettings.openrouter_api_key ?? '')
+    setModel(c.model ?? globalSettings.default_model ?? 'anthropic/claude-sonnet-4-5')
+    setApiUrl(c.api_url ?? DEFAULT_API_URL)
+  }, [agent.id])
+
+  const save = () => {
+    const finalModel = model === '__custom__' ? customModel.trim() : model
+    onUpdate({
+      connector_config: {
+        api_key: apiKey,
+        model: finalModel || 'anthropic/claude-sonnet-4-5',
+        api_url: apiUrl || DEFAULT_API_URL,
+      },
+    })
+  }
+
+  return (
+    <div className="connector-cfg">
+      <div className="field">
+        <label className="label">Model</label>
+        <select className="select" value={isCustomModel ? '__custom__' : model}
+          onChange={e => setModel(e.target.value)}>
+          {OPENROUTER_MODELS.map(m => (
+            <option key={m.id} value={m.id}>
+              {m.provider ? `${m.provider} — ${m.label}` : m.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      {(model === '__custom__' || isCustomModel) && (
+        <div className="field">
+          <label className="label">Custom model ID</label>
+          <input className="input mono" value={customModel || (isCustomModel ? model : '')}
+            onChange={e => setCustomModel(e.target.value)} placeholder="provider/model-name" spellCheck={false} />
+        </div>
+      )}
+      <div className="field">
+        <label className="label">API Key</label>
+        <div className="settings__key-wrap">
+          <input className="input" type={showKey ? 'text' : 'password'} value={apiKey}
+            onChange={e => setApiKey(e.target.value)} placeholder="sk-or-v1-…" autoComplete="off" spellCheck={false} />
+          <button className="btn btn--ghost btn--icon btn--sm settings__eye" type="button"
+            onClick={() => setShowKey(v => !v)}>
+            <Icon name={showKey ? 'eyeOff' : 'eye'} size={13} />
+          </button>
+        </div>
+        {!apiKey && globalSettings.openrouter_api_key && (
+          <p className="settings__hint">
+            <button className="btn btn--ghost btn--sm" style={{padding:'0 4px',height:'auto'}}
+              onClick={() => setApiKey(globalSettings.openrouter_api_key)}>
+              Use key from Settings
+            </button>
+          </p>
+        )}
+      </div>
+      <div className="field">
+        <label className="label">API URL</label>
+        <input className="input mono" value={apiUrl} onChange={e => setApiUrl(e.target.value)}
+          placeholder={DEFAULT_API_URL} spellCheck={false} />
+      </div>
+      <button className="btn btn--primary btn--sm" onClick={save}>Save connector config</button>
+    </div>
+  )
+}
+
 function AgentConfig({ agent, relationships, agents, onUpdate, onDelete, onClose, onUpsertSchedule, onDeleteRelation, onCreateRelation }: {
   agent: Agent; relationships: AgentRelationship[]; agents: Agent[]
   onUpdate: (patch: Partial<Agent>) => void; onDelete: () => void; onClose: () => void
   onUpsertSchedule: (patch: Partial<Schedule>) => void
   onDeleteRelation: (id: string) => void; onCreateRelation: (data: Omit<AgentRelationship, 'id'>) => void
 }) {
-  const [tab, setTab] = useState<'general' | 'prompt' | 'scope' | 'schedule' | 'relations'>('general')
+  const [tab, setTab] = useState<'general' | 'connector' | 'prompt' | 'scope' | 'schedule' | 'relations'>('general')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [scopeDraft, setScopeDraft] = useState(() => JSON.stringify(agent.authority_scope || {}, null, 2))
   const [saving, setSaving] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [runResult, setRunResult] = useState<'ok' | 'err' | null>(null)
 
   useEffect(() => {
     setScopeDraft(JSON.stringify(agent.authority_scope || {}, null, 2))
     setConfirmDelete(false)
+    setRunResult(null)
   }, [agent.id])
 
   const isAI = agent.type === 'ai'
@@ -246,6 +331,20 @@ function AgentConfig({ agent, relationships, agents, onUpdate, onDelete, onClose
   const save = async (patch: Partial<Agent>) => {
     setSaving(true)
     try { await onUpdate(patch) } finally { setSaving(false) }
+  }
+
+  const runNow = async () => {
+    setRunning(true)
+    setRunResult(null)
+    try {
+      await agentsApi.run(agent.id)
+      setRunResult('ok')
+    } catch {
+      setRunResult('err')
+    } finally {
+      setRunning(false)
+      setTimeout(() => setRunResult(null), 3000)
+    }
   }
 
   return (
@@ -267,7 +366,7 @@ function AgentConfig({ agent, relationships, agents, onUpdate, onDelete, onClose
           <button className="btn btn--ghost btn--icon btn--sm agent-cfg__close" onClick={onClose}><Icon name="close" size={14}/></button>
         </div>
         <nav className="agent-cfg__tabs">
-          {(['general', ...(isAI ? ['prompt'] : []), 'scope', ...(isAI ? ['schedule'] : []), 'relations'] as const).map(t => (
+          {(['general', ...(isAI ? ['connector', 'prompt'] : []), 'scope', ...(isAI ? ['schedule'] : []), 'relations'] as const).map(t => (
             <button key={t} className={`agent-cfg__tab${tab === t ? ' agent-cfg__tab--active' : ''}`} onClick={() => setTab(t as any)}>
               {t === 'relations' ? <>{t} <span className="mono">{myRelations.length}</span></> : t}
             </button>
@@ -282,15 +381,22 @@ function AgentConfig({ agent, relationships, agents, onUpdate, onDelete, onClose
             {isAI && (
               <div className="field">
                 <label className="label">Connector type</label>
-                <select className="select" value={agent.connector_type || ''} onChange={e => save({ connector_type: e.target.value })}>
-                  <option value="anthropic">anthropic</option>
-                  <option value="openai">openai</option>
-                  <option value="custom">custom</option>
+                <select className="select" value={agent.connector_type || ''} onChange={e => save({ connector_type: e.target.value || null as any })}>
+                  <option value="">— None</option>
+                  <option value="http">http (OpenRouter / OpenAI-compatible)</option>
+                  <option value="opencode">opencode (headless CLI)</option>
                 </select>
+                {agent.connector_type === 'http' && (
+                  <p className="settings__hint">Configure model and API key in the <strong>connector</strong> tab.</p>
+                )}
               </div>
             )}
             {!isAI && <div className="agent-cfg__note">Humans don't have connector settings. Use the Relations tab to wire this person into the graph.</div>}
           </>
+        )}
+
+        {tab === 'connector' && isAI && (
+          <ConnectorConfig agent={agent} onUpdate={patch => save(patch)} />
         )}
 
         {tab === 'prompt' && isAI && (
@@ -380,7 +486,19 @@ function AgentConfig({ agent, relationships, agents, onUpdate, onDelete, onClose
       </div>
 
       <footer className="agent-cfg__foot">
-        <div style={{fontFamily:'var(--font-mono)',fontSize:10,color:'var(--ink-3)'}}>PATCH /agents/{agent.id.slice(0,10)}…</div>
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          {isAI && agent.connector_type && (
+            <button
+              className="btn btn--primary btn--sm"
+              onClick={runNow}
+              disabled={running}
+              title="Trigger agent run now"
+            >
+              <Icon name={running ? 'pause' : 'play'} size={12}/>
+              {running ? 'Running…' : runResult === 'ok' ? 'Triggered ✓' : runResult === 'err' ? 'Error ✗' : 'Run now'}
+            </button>
+          )}
+        </div>
         {confirmDelete ? (
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             <span style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}}>Delete agent?</span>

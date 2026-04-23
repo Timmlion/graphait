@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage'
 import BoardPage from './pages/BoardPage'
 import GraphPage from './pages/GraphPage'
 import SettingsPage from './pages/SettingsPage'
+import InboxPage from './pages/InboxPage'
 import { useEffect } from 'react'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -37,6 +38,7 @@ function AppRoutes() {
         <Route path="/login" element={token ? <Navigate to="/board" replace /> : <LoginPage />} />
         <Route path="/board"    element={<RequireAuth><BoardPage /></RequireAuth>} />
         <Route path="/agents"   element={<RequireAuth><GraphPage /></RequireAuth>} />
+        <Route path="/inbox"    element={<RequireAuth><InboxPage /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to={token ? '/board' : '/login'} replace />} />
       </Routes>

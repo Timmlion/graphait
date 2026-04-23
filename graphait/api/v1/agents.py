@@ -1,10 +1,12 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from graphait.database import get_db
 from graphait.api.deps import get_current_user
+from graphait.models.agent import AgentType
 from graphait.models.user import User
 from graphait.modules.agents.service import agent_service
+from graphait.modules.scheduler.worker import run_agent_tick
 from graphait.schemas.agent import AgentCreate, AgentUpdate, AgentRead
 
 router = APIRouter()
@@ -42,3 +44,19 @@ def update_agent(agent_id: uuid.UUID, body: AgentUpdate, db: Session = Depends(g
 def delete_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     agent = _get_agent_or_404(agent_id, current_user, db)
     agent_service.delete(db, agent)
+
+
+@router.post("/{agent_id}/run", status_code=status.HTTP_202_ACCEPTED)
+async def run_agent_now(
+    agent_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    agent = _get_agent_or_404(agent_id, current_user, db)
+    if agent.type != AgentType.ai:
+        raise HTTPException(status_code=400, detail="Only AI agents can be triggered manually")
+    if not agent.connector_type:
+        raise HTTPException(status_code=400, detail="Agent has no connector configured")
+    background_tasks.add_task(run_agent_tick, agent.id)
+    return {"status": "triggered", "agent_id": str(agent_id)}
