@@ -9,6 +9,7 @@ services:
 
   api:
     image: ghcr.io/timmlion/graphait-api:fix-dburl
+    pull_policy: always
     expose:
       - "8000"
     environment:

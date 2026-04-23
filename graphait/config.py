@@ -1,12 +1,9 @@
 from urllib.parse import quote_plus
-from pydantic import field_validator, model_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # Prefer individual Postgres vars so special chars in password are safe.
-    # DATABASE_URL can still be set directly to override.
-    database_url: str = ""
     postgres_host: str = "db"
     postgres_port: int = 5432
     postgres_user: str = "graphait"
@@ -18,15 +15,13 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
 
-    @model_validator(mode="after")
-    def build_database_url(self) -> "Settings":
-        if not self.database_url:
-            pw = quote_plus(self.postgres_password)
-            self.database_url = (
-                f"postgresql://{self.postgres_user}:{pw}"
-                f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
-            )
-        return self
+    @property
+    def database_url(self) -> str:
+        pw = quote_plus(self.postgres_password)
+        return (
+            f"postgresql://{self.postgres_user}:{pw}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
 
     @field_validator("secret_key")
     @classmethod
