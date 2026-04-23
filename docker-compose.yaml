@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
 
   api:
-    image: ghcr.io/timmlion/graphait-api:latest
+    image: ghcr.io/timmlion/graphait-api:4300094
     expose:
       - "8000"
     environment:
