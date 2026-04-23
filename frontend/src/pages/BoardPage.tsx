@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
+import { useState, useEffect, useCallback, type FormEvent } from 'react'
 import { tasksApi, type Task, type Comment, type TaskStatus, type TaskPriority } from '../api/tasks'
+import { agentsApi, type Agent } from '../api/agents'
 import { useAuth } from '../context/AuthContext'
 import Icon from '../components/Icon'
 
@@ -39,7 +40,40 @@ function PriorityPip({ level }: { level: TaskPriority }) {
   )
 }
 
-function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
+function AgentChip({ agent }: { agent: Agent }) {
+  return (
+    <span className="agent-chip">
+      <span className={`avatar avatar--${agent.type} avatar--xs`}>
+        {agent.name.slice(0,1).toUpperCase()}
+      </span>
+      <span className="agent-chip__name">{agent.name}</span>
+    </span>
+  )
+}
+
+function AgentPicker({ value, agents, onChange, placeholder = '— Unassigned' }: {
+  value: string | null; agents: Agent[]; onChange: (id: string | null) => void; placeholder?: string
+}) {
+  return (
+    <select
+      className="select"
+      value={value ?? ''}
+      onChange={e => onChange(e.target.value || null)}
+    >
+      <option value="">{placeholder}</option>
+      {agents.filter(a => a.is_active).map(a => (
+        <option key={a.id} value={a.id}>
+          {a.name} · {a.role_title} ({a.type === 'ai' ? 'AI' : 'Human'})
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function TaskCard({ task, agentMap, onOpen }: {
+  task: Task; agentMap: Map<string, Agent>; onOpen: (t: Task) => void
+}) {
+  const assignee = task.assignee_id ? agentMap.get(task.assignee_id) : null
   return (
     <article className="taskcard" onClick={() => onOpen(task)}>
       <header className="taskcard__head">
@@ -48,7 +82,10 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
       </header>
       <h3 className="taskcard__title">{task.title}</h3>
       <footer className="taskcard__foot">
-        <span className="taskcard__assignee">{task.assignee_id ? 'Assigned' : 'Unassigned'}</span>
+        {assignee
+          ? <AgentChip agent={assignee} />
+          : <span className="taskcard__unassigned">Unassigned</span>
+        }
         <span className="taskcard__spacer" />
         <span className="taskcard__time mono">{timeAgo(task.updated_at)}</span>
       </footer>
@@ -56,8 +93,9 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) {
   )
 }
 
-function Column({ status, tasks, onOpen, onCreate, dragOver, onDragOver, onDragLeave, onDrop }: {
-  status: TaskStatus; tasks: Task[]; onOpen: (t: Task) => void; onCreate: (s: TaskStatus) => void
+function Column({ status, tasks, agentMap, onOpen, onCreate, dragOver, onDragOver, onDragLeave, onDrop }: {
+  status: TaskStatus; tasks: Task[]; agentMap: Map<string, Agent>
+  onOpen: (t: Task) => void; onCreate: (s: TaskStatus) => void
   dragOver: boolean; onDragOver: () => void; onDragLeave: () => void; onDrop: () => void
 }) {
   const meta = STATUS_META[status]
@@ -80,8 +118,11 @@ function Column({ status, tasks, onOpen, onCreate, dragOver, onDragOver, onDragL
       </header>
       <div className="col__body">
         {tasks.map(t => (
-          <div key={t.id} draggable onDragStart={e => e.dataTransfer.setData('text/plain', t.id)}>
-            <TaskCard task={t} onOpen={onOpen} />
+          <div key={t.id} draggable onDragStart={e => {
+            e.dataTransfer.setData('text/plain', t.id);
+            (window as any).__dragTaskId = t.id
+          }}>
+            <TaskCard task={t} agentMap={agentMap} onOpen={onOpen} />
           </div>
         ))}
         {tasks.length === 0 && <div className="col__empty mono">—</div>}
@@ -90,8 +131,8 @@ function Column({ status, tasks, onOpen, onCreate, dragOver, onDragOver, onDragL
   )
 }
 
-function GroupRail({ group, tasks, collapsed, onToggle, onOpen, onCreate, dragOver, onDragOver, onDragLeave, onMove }: {
-  group: string; tasks: Task[]; collapsed: boolean; onToggle: () => void
+function GroupRail({ group, tasks, agentMap, collapsed, onToggle, onOpen, onCreate, dragOver, onDragOver, onDragLeave, onMove }: {
+  group: string; tasks: Task[]; agentMap: Map<string, Agent>; collapsed: boolean; onToggle: () => void
   onOpen: (t: Task) => void; onCreate: (s: TaskStatus) => void
   dragOver: string | null; onDragOver: (s: TaskStatus) => void; onDragLeave: () => void
   onMove: (taskId: string, status: TaskStatus) => void
@@ -117,6 +158,7 @@ function GroupRail({ group, tasks, collapsed, onToggle, onOpen, onCreate, dragOv
               key={s}
               status={s}
               tasks={tasks.filter(t => t.status === s)}
+              agentMap={agentMap}
               onOpen={onOpen}
               onCreate={onCreate}
               dragOver={dragOver === s}
@@ -134,21 +176,26 @@ function GroupRail({ group, tasks, collapsed, onToggle, onOpen, onCreate, dragOv
   )
 }
 
-function CreateTaskModal({ onClose, onCreated, defaultStatus }: {
-  onClose: () => void; onCreated: (t: Task) => void; defaultStatus?: TaskStatus
+function CreateTaskModal({ agents, onClose, onCreated, defaultStatus }: {
+  agents: Agent[]; onClose: () => void; onCreated: (t: Task) => void; defaultStatus?: TaskStatus
 }) {
-  const [title, setTitle] = useState('')
-  const [priority, setPriority] = useState<TaskPriority>('medium')
-  const [status, setStatus] = useState<TaskStatus>(defaultStatus || 'todo')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [title, setTitle]           = useState('')
+  const [priority, setPriority]     = useState<TaskPriority>('medium')
+  const [status, setStatus]         = useState<TaskStatus>(defaultStatus || 'todo')
+  const [assigneeId, setAssigneeId] = useState<string | null>(null)
+  const [error, setError]           = useState('')
+  const [loading, setLoading]       = useState(false)
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
     setLoading(true)
     try {
-      const task = await tasksApi.create({ title: title.trim(), priority })
+      const task = await tasksApi.create({
+        title: title.trim(),
+        priority,
+        assignee_id: assigneeId ?? undefined,
+      })
       if (status !== 'todo') {
         const updated = await tasksApi.update(task.id, { status })
         onCreated(updated)
@@ -192,6 +239,10 @@ function CreateTaskModal({ onClose, onCreated, defaultStatus }: {
                 </select>
               </div>
             </div>
+            <div className="field">
+              <label className="label">Assign to</label>
+              <AgentPicker value={assigneeId} agents={agents} onChange={setAssigneeId} />
+            </div>
             {error && <div className="auth__error"><Icon name="alert" size={13}/><span>{error}</span></div>}
           </div>
           <div className="modal__foot">
@@ -209,13 +260,13 @@ function CreateTaskModal({ onClose, onCreated, defaultStatus }: {
   )
 }
 
-function TaskDrawer({ task, tasks, onClose, onUpdated }: {
-  task: Task; tasks: Task[]; onClose: () => void; onUpdated: (t: Task) => void
+function TaskDrawer({ task, agents, onClose, onUpdated }: {
+  task: Task; agents: Agent[]; onClose: () => void; onUpdated: (t: Task) => void
 }) {
-  const [comments, setComments] = useState<Comment[]>([])
+  const [comments, setComments]     = useState<Comment[]>([])
   const [commentText, setCommentText] = useState('')
-  const [sending, setSending] = useState(false)
-  const [title, setTitle] = useState(task.title)
+  const [sending, setSending]       = useState(false)
+  const [title, setTitle]           = useState(task.title)
   const [description, setDescription] = useState(task.description ?? '')
 
   useEffect(() => {
@@ -290,6 +341,14 @@ function TaskDrawer({ task, tasks, onClose, onUpdated }: {
                 {PRIORITIES.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
               </select>
             </div>
+            <div className="metafield">
+              <div className="label">Assignee</div>
+              <AgentPicker
+                value={task.assignee_id}
+                agents={agents}
+                onChange={id => update({ assignee_id: id ?? undefined })}
+              />
+            </div>
           </div>
 
           <div className="drawer__section">
@@ -350,18 +409,24 @@ function TaskDrawer({ task, tasks, onClose, onUpdated }: {
 
 export default function BoardPage() {
   const { user } = useAuth()
-  const [tasks, setTasks] = useState<Task[]>([])
+  const [tasks, setTasks]     = useState<Task[]>([])
+  const [agents, setAgents]   = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const [creating, setCreating] = useState<TaskStatus | null>(null)
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
-  const [dragOver, setDragOver] = useState<TaskStatus | null>(null)
+  const [creating, setCreating]         = useState<TaskStatus | null>(null)
+  const [collapsed, setCollapsed]       = useState<Record<string, boolean>>({})
+  const [dragOver, setDragOver]         = useState<TaskStatus | null>(null)
+
+  const agentMap = new Map(agents.map(a => [a.id, a]))
 
   const loadTasks = useCallback(() => {
     tasksApi.list().then(setTasks).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => { loadTasks() }, [loadTasks])
+  useEffect(() => {
+    loadTasks()
+    agentsApi.list().then(setAgents).catch(() => {})
+  }, [loadTasks])
 
   const handleUpdated = (updated: Task) => {
     setTasks(prev => prev.map(t => t.id === updated.id ? updated : t))
@@ -408,6 +473,7 @@ export default function BoardPage() {
               key={group}
               group={group}
               tasks={tasks}
+              agentMap={agentMap}
               collapsed={!!collapsed[group]}
               onToggle={() => toggleGroup(group)}
               onOpen={t => setSelectedTask(prev => prev?.id === t.id ? null : t)}
@@ -425,7 +491,7 @@ export default function BoardPage() {
         <TaskDrawer
           key={selectedTask.id}
           task={selectedTask}
-          tasks={tasks}
+          agents={agents}
           onClose={() => setSelectedTask(null)}
           onUpdated={handleUpdated}
         />
@@ -433,6 +499,7 @@ export default function BoardPage() {
 
       {creating !== null && (
         <CreateTaskModal
+          agents={agents}
           defaultStatus={creating}
           onClose={() => setCreating(null)}
           onCreated={handleCreated}
