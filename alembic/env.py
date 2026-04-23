@@ -16,7 +16,8 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 from graphait.config import settings
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# configparser uses % for interpolation — escape it so %40 doesn't raise ValueError
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 # add your model's MetaData object here
 # for 'autogenerate' support
