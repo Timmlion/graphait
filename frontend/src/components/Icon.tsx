@@ -31,6 +31,9 @@ const ICONS: Record<string, React.ReactNode> = {
   logo:       <><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M6 8v8"/><path d="M8 6h8"/><path d="M7.5 7.5l9 9"/></>,
   reportsTo:  <><path d="M5 6h10a4 4 0 0 1 4 4v8"/><path d="M15 15l4 4 4-4"/></>,
   collab:     <><path d="M4 8h12"/><path d="M12 4l4 4-4 4"/><path d="M20 16H8"/><path d="M12 20l-4-4 4-4"/></>,
+  eye:        <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,
+  eyeOff:     <><path d="M17.9 17.9A11 11 0 0 1 12 20c-7 0-11-8-11-8a18 18 0 0 1 5.1-5.9"/><path d="M10.7 5.1A10 10 0 0 1 12 4c7 0 11 8 11 8a18 18 0 0 1-2.2 3.2"/><path d="M3 3l18 18"/></>,
+  key:        <><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.77-7.77zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></>,
 }
 
 export default function Icon({ name, size = 14, stroke = 1.6, className = '' }: {

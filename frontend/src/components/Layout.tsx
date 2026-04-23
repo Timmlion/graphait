@@ -55,6 +55,13 @@ export function Sidebar() {
         </nav>
       </div>
 
+      <div className="sidebar__section">
+        <div className="sidebar__label eyebrow">System</div>
+        <nav className="sidebar__nav">
+          <SideNavLink to="/settings" icon="settings" label="Settings" />
+        </nav>
+      </div>
+
       <div className="sidebar__spacer" />
 
       <div className="sidebar__bottom">

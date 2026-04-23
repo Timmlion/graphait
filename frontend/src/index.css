@@ -747,3 +747,50 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .segmented { display: inline-flex; border: 1px solid var(--line-1); border-radius: var(--radius-2); padding: 2px; background: var(--bg-2); gap: 2px; }
 .segmented__btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; font-size: var(--fs-xs); color: var(--ink-3); border-radius: 3px; }
 .segmented__btn--active { background: var(--bg-1); color: var(--ink-1); box-shadow: 0 1px 0 rgba(0,0,0,0.15); }
+
+/* ─── Settings ─── */
+.settings {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 40px 32px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+.settings__header { display: flex; flex-direction: column; gap: 6px; }
+.settings__title { font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -0.02em; color: var(--ink-1); }
+.settings__sub { font-size: var(--fs-sm); color: var(--ink-3); }
+
+.settings__body { display: flex; flex-direction: column; gap: 32px; }
+
+.settings__section {
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-3);
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.settings__section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line-1);
+  background: var(--bg-2);
+}
+.settings__section-title { font-size: var(--fs-sm); font-weight: 600; color: var(--ink-1); }
+
+.settings__fields { display: flex; flex-direction: column; gap: 20px; padding: 20px; }
+
+.settings__key-wrap { position: relative; display: flex; align-items: center; }
+.settings__key-wrap .input { padding-right: 36px; }
+.settings__eye { position: absolute; right: 4px; }
+
+.settings__hint { font-size: var(--fs-xs); color: var(--ink-3); margin-top: 2px; }
+
+.settings__row { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
+.settings__status { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--ink-3); }
+
+.dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.dot--ok { background: var(--ok); }
+.dot--warn { background: var(--warn); }
+.dot--danger { background: var(--danger); }
