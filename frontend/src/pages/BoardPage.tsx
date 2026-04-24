@@ -458,6 +458,9 @@ export default function BoardPage() {
         <span className="topbar__crumb mono">{(user as any)?.org_slug || 'workspace'}.graphait / board</span>
         <div className="topbar__right">
           <span style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}} className="mono">{openTaskCount} open</span>
+          <button className="btn btn--sm" onClick={() => { setSelectedTask(null); loadTasks() }} title="Refresh">
+            <Icon name="spark" size={12}/>Refresh
+          </button>
           <button className="btn btn--primary btn--sm" onClick={() => setCreating('todo')}>
             <Icon name="plus" size={12}/>New task
           </button>

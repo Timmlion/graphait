@@ -35,5 +35,6 @@ class TaskRead(BaseModel):
     creator_id: uuid.UUID
     parent_task_id: Optional[uuid.UUID]
     created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}

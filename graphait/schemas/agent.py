@@ -5,6 +5,17 @@ from pydantic import BaseModel
 from graphait.models.agent import AgentType
 
 
+class ScheduleRead(BaseModel):
+    id: uuid.UUID
+    agent_id: uuid.UUID
+    interval_seconds: int
+    is_enabled: bool
+    last_run_at: Optional[datetime]
+    next_run_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
 class AgentCreate(BaseModel):
     name: str
     role_title: str
@@ -38,5 +49,6 @@ class AgentRead(BaseModel):
     authority_scope: Optional[dict]
     is_active: bool
     created_at: datetime
+    schedule: Optional[ScheduleRead] = None
 
     model_config = {"from_attributes": True}

@@ -55,9 +55,15 @@ class HTTPConnector(BaseConnector):
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
 
+        # Strip markdown fences that some models add despite instructions
+        stripped = content.strip()
+        if stripped.startswith("```"):
+            lines = stripped.splitlines()
+            stripped = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:]).strip()
+
         try:
-            data = json.loads(content)
+            data = json.loads(stripped)
         except json.JSONDecodeError as e:
-            raise ValueError(f"HTTPConnector failed to parse response: {e}\nRaw: {content[:200]}") from e
+            raise ValueError(f"HTTPConnector failed to parse response: {e}\nRaw: {content[:300]}") from e
 
         return [Action(type=a["type"], payload=a.get("payload", {})) for a in data.get("actions", [])]
