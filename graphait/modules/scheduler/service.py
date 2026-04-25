@@ -13,26 +13,7 @@ class SchedulerService:
         self._scheduler = None
 
     def start(self) -> None:
-        try:
-            from apscheduler.jobstores.redis import RedisJobStore
-            from graphait.config import settings
-            import urllib.parse
-
-            parsed = urllib.parse.urlparse(settings.redis_url)
-            jobstores = {
-                "default": RedisJobStore(
-                    jobs_key="graphait:jobs",
-                    run_times_key="graphait:run_times",
-                    host=parsed.hostname or "redis",
-                    port=parsed.port or 6379,
-                    db=int(parsed.path.lstrip("/") or 0),
-                )
-            }
-            self._scheduler = BackgroundScheduler(jobstores=jobstores)
-        except Exception as e:
-            logger.warning("Redis unavailable, using in-memory job store: %s", e)
-            self._scheduler = BackgroundScheduler()
-
+        self._scheduler = BackgroundScheduler()
         self._scheduler.start()
         logger.info("Scheduler started")
 

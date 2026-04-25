@@ -115,9 +115,8 @@ class AgentLoop:
                 messages.append(assistant_tool_call_msg(tc))
                 messages.append(tool_result_msg(tc.id, result))
 
-                if tc.name == "mark_done":
-                    self._post_comment(tc.arguments.get("summary", "Done."))
-                    self._update_status("done")
+                if tc.name == "update_status":
+                    # agent explicitly set a terminal or blocking status → stop loop
                     return
 
         # hit max iterations
@@ -159,7 +158,12 @@ Status: {task.status}
 
 **Storage:** `Skill` table in DB (name + content). Assigned to agents via `agent_skills` join table.
 
-**Filesystem sync:** On each tick, the full effective prompt (system_prompt + all skills) is written to `{working_dir}/AGENTS.md`. This makes the workspace compatible with Claude Code, Cursor, Codex, and any tool that reads AGENTS.md.
+**Filesystem sync:** AGENTS.md is written to `{working_dir}/AGENTS.md` on save events — NOT on every tick. This makes the workspace compatible with Claude Code, Cursor, Codex, and any tool that reads AGENTS.md.
+
+Regeneration triggers:
+- `PATCH /agents/{id}` — prompt, tools, or model changed
+- `PUT/DELETE /agents/{id}/skills` — skill assigned or removed from agent
+- `PATCH /skills/{id}` — skill content updated (regenerates for all agents using that skill)
 
 ```python
 # New models:
@@ -210,8 +214,8 @@ class AgentSkill(Base):
 | `write_file` | no | Write/create file in working_dir |
 | `list_directory` | no | List files in working_dir |
 | `run_shell` | no | Run shell command in working_dir |
-| `post_comment` | yes | Post interim comment (status stays as-is) |
-| `mark_done` | yes | Post final comment + set status → done |
+| `post_comment` | yes | Post comment to current task (status unchanged) |
+| `update_status` | yes | Set task status: `done`, `blocked`, `in_progress`, `in_review`, `cancelled` |
 | `create_task` | yes | Create new task in Graphait |
 | `assign_task` | yes | Assign existing task to agent |
 
@@ -238,7 +242,7 @@ Each AI agent gets a persistent workspace on disk:
 - Auto-created on first tick if absent
 - Path stored in `connector_config.working_dir` (default: `./workspaces/{agent_id}`, relative to app root where uvicorn runs)
 - All file tools resolve paths relative to `working_dir`
-- AGENTS.md regenerated fresh on every tick (source of truth = DB)
+- AGENTS.md regenerated on agent/skill save (not on tick) — source of truth = DB
 
 ---
 

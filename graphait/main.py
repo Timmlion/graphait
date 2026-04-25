@@ -2,10 +2,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from graphait.api.v1.router import router
 from graphait.modules.scheduler.service import scheduler_service
+from graphait.database import engine, Base
+import graphait.models  # noqa: F401 — registers all models with Base
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    Base.metadata.create_all(engine)
     try:
         scheduler_service.start()
     except Exception as e:
