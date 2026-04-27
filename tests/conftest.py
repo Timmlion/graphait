@@ -3,18 +3,16 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-for-testing-only-minimum-32
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from graphait.database import Base, get_db
 from graphait.main import create_app
 
-TEST_DB_URL = "postgresql://graphait:graphait@localhost:5432/graphait_test"
-
 
 @pytest.fixture(scope="session")
 def engine():
-    e = create_engine(TEST_DB_URL)
+    e = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=e)
     yield e
     Base.metadata.drop_all(bind=e)
@@ -24,15 +22,8 @@ def engine():
 def db(engine):
     connection = engine.connect()
     transaction = connection.begin()
-    TestingSession = sessionmaker(bind=connection)
-    session = TestingSession()
-    session.begin_nested()  # savepoint — commit() inside handlers stays local
-
-    @event.listens_for(session, "after_transaction_end")
-    def restart_savepoint(session, transaction):
-        if transaction.nested and not transaction._parent.nested:
-            session.begin_nested()
-
+    Session = sessionmaker(bind=connection)
+    session = Session()
     yield session
     session.close()
     transaction.rollback()
