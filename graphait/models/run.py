@@ -34,6 +34,7 @@ class AgentRun(Base):
     status: Mapped[RunStatus] = mapped_column(Enum(RunStatus), nullable=False, default=RunStatus.running)
 
     events: Mapped[list[RunEvent]] = relationship("RunEvent", back_populates="run", cascade="all, delete-orphan")
+    task: Mapped[Optional["Task"]] = relationship("Task", foreign_keys=[task_id])
 
 
 class RunEvent(Base):
