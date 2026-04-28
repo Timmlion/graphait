@@ -29,6 +29,7 @@ const ICONS: Record<string, React.ReactNode> = {
   spark:      <><path d="M12 3v4"/><path d="M12 17v4"/><path d="M3 12h4"/><path d="M17 12h4"/><path d="M5.6 5.6l2.8 2.8"/><path d="M15.6 15.6l2.8 2.8"/><path d="M5.6 18.4l2.8-2.8"/><path d="M15.6 8.4l2.8-2.8"/></>,
   alert:      <><path d="M12 3l10 18H2z"/><path d="M12 10v5"/><circle cx="12" cy="18" r="0.6" fill="currentColor"/></>,
   logo:       <><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M6 8v8"/><path d="M8 6h8"/><path d="M7.5 7.5l9 9"/></>,
+  activity:   <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>,
   reportsTo:  <><path d="M5 6h10a4 4 0 0 1 4 4v8"/><path d="M15 15l4 4 4-4"/></>,
   collab:     <><path d="M4 8h12"/><path d="M12 4l4 4-4 4"/><path d="M20 16H8"/><path d="M12 20l-4-4 4-4"/></>,
   eye:        <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,
