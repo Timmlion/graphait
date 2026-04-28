@@ -61,7 +61,7 @@ function AgentPicker({ value, agents, onChange, placeholder = '— Unassigned' }
       onChange={e => onChange(e.target.value || null)}
     >
       <option value="">{placeholder}</option>
-      {agents.filter(a => a.is_active).map(a => (
+      {agents.map(a => (
         <option key={a.id} value={a.id}>
           {a.name} · {a.role_title} ({a.type === 'ai' ? 'AI' : 'Human'})
         </option>
