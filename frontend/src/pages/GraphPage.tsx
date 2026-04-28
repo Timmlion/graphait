@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react'
-import { agentsApi, schedulesApi, type Agent, type Schedule } from '../api/agents'
-import { graphApi, type AgentRelationship } from '../api/graph'
-import { loadSettings, OPENROUTER_MODELS } from '../api/settings'
+import { agentsApi, type Agent } from '../api/agents'
+import { graphApi, type GraphEdge } from '../api/graph'
+import { skillsApi, type SkillRead } from '../api/skills'
 import { useAuth } from '../context/AuthContext'
 import Icon from '../components/Icon'
 
 /* ─── Layout helpers ─── */
-function computeLayout(agents: Agent[], relationships: AgentRelationship[]) {
+function computeLayout(agents: Agent[], edges: GraphEdge[]) {
   const parent: Record<string, string> = {}
-  relationships.forEach(r => {
-    if (r.type === 'reports_to' && !parent[r.from_agent_id]) parent[r.from_agent_id] = r.to_agent_id
+  edges.forEach(e => {
+    if (e.type === 'reports_to' && !parent[e.from_agent_id]) parent[e.from_agent_id] = e.to_agent_id
   })
 
   const level: Record<string, number> = {}
@@ -44,8 +44,8 @@ function computeLayout(agents: Agent[], relationships: AgentRelationship[]) {
     row.forEach((a, i) => { nodes[a.id] = { x: startX + i * colWidth, y: padY + lv * rowHeight + 30 } })
   })
 
-  const edges = relationships.map(r => ({ id: r.id, from: r.from_agent_id, to: r.to_agent_id, type: r.type }))
-  return { nodes, edges, width, height }
+  const edgeData = edges.map(e => ({ id: e.id, from: e.from_agent_id, to: e.to_agent_id, type: e.type }))
+  return { nodes, edgeData, width, height }
 }
 
 function clipToRect(center: { x: number; y: number }, toward: { x: number; y: number }, w: number, h: number, pad = 2) {
@@ -65,33 +65,25 @@ function orthogonalPath(a: { x: number; y: number }, b: { x: number; y: number }
   return `M ${a.x} ${a.y} L ${a.x} ${midY} L ${b.x} ${midY} L ${b.x} ${b.y}`
 }
 
-function formatInterval(s: number) {
-  if (s < 60) return `${s}s`
-  if (s < 3600) return `${Math.round(s / 60)}m`
-  if (s < 86400) return `${(s / 3600).toFixed(1)}h`
-  return `${(s / 86400).toFixed(1)}d`
-}
-
 function initials(name: string) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 }
 
 /* ─── Agent Graph ─── */
-function AgentGraph({ agents, relationships, selectedId, onSelect, onDeleteRelation }: {
-  agents: Agent[]; relationships: AgentRelationship[]; selectedId: string | null
-  onSelect: (id: string) => void; onDeleteRelation: (id: string) => void
+function AgentGraph({ agents, edges, selectedId, onSelect }: {
+  agents: Agent[]; edges: GraphEdge[]; selectedId: string | null
+  onSelect: (id: string) => void
 }) {
   const [hoverEdge, setHoverEdge] = useState<string | null>(null)
-  const layout = computeLayout(agents, relationships)
-  const { nodes, edges, width, height } = layout
+  const layout = computeLayout(agents, edges)
+  const { nodes, edgeData, width, height } = layout
 
   return (
     <div className="graph">
       <div className="graph__toolbar">
-        <div className="eyebrow">Organization graph · {agents.length} agents · {relationships.length} edges</div>
+        <div className="eyebrow">Organization graph · {agents.length} agents · {edges.length} edges</div>
         <div className="graph__legend">
           <span><span style={{display:'inline-block',width:16,height:2,background:'var(--accent-line)'}}/>reports_to</span>
-          <span><span style={{display:'inline-block',width:16,height:0,borderTop:'2px dashed var(--line-3)'}}/>collaborates_with</span>
         </div>
       </div>
       <div className="graph__scroll">
@@ -106,7 +98,7 @@ function AgentGraph({ agents, relationships, selectedId, onSelect, onDeleteRelat
           </defs>
           <rect width={width} height={height} fill="url(#agents-grid)"/>
 
-          {edges.map(e => {
+          {edgeData.map(e => {
             const aC = nodes[e.from], bC = nodes[e.to]
             if (!aC || !bC) return null
             const isSel = selectedId && (e.from === selectedId || e.to === selectedId)
@@ -122,25 +114,6 @@ function AgentGraph({ agents, relationships, selectedId, onSelect, onDeleteRelat
             )
           })}
 
-          {hoverEdge && (() => {
-            const e = edges.find(x => x.id === hoverEdge)
-            if (!e) return null
-            const aC = nodes[e.from], bC = nodes[e.to]
-            if (!aC || !bC) return null
-            const mx = (aC.x + bC.x) / 2, my = (aC.y + bC.y) / 2
-            return (
-              <g key={`menu-${e.id}`} transform={`translate(${mx - 52}, ${my - 12})`}
-                onMouseEnter={() => setHoverEdge(e.id)} onMouseLeave={() => setHoverEdge(null)}>
-                <rect width="104" height="22" rx="3" fill="var(--bg-1)" stroke="var(--line-2)"/>
-                <text x="8" y="14" className="gedge__menu-lbl">{e.type.replace('_', ' ')}</text>
-                <g style={{ cursor: 'pointer' }} onClick={ev => { ev.stopPropagation(); onDeleteRelation(e.id) }}>
-                  <rect x="84" y="4" width="16" height="14" rx="2" fill="transparent"/>
-                  <path d="M88 8 l8 6 M96 8 l-8 6" stroke="var(--ink-3)" strokeWidth="1.2"/>
-                </g>
-              </g>
-            )
-          })()}
-
           {agents.map(a => {
             const n = nodes[a.id]
             if (!n) return null
@@ -148,7 +121,7 @@ function AgentGraph({ agents, relationships, selectedId, onSelect, onDeleteRelat
             const w = 152, h = 52
             return (
               <g key={a.id}
-                className={`gnode${a.type === 'ai' ? ' gnode--ai' : ' gnode--human'}${isSel ? ' gnode--selected' : ''}${!a.is_active ? ' gnode--inactive' : ''}`}
+                className={`gnode${a.type === 'ai' ? ' gnode--ai' : ' gnode--human'}${isSel ? ' gnode--selected' : ''}`}
                 transform={`translate(${n.x - w/2}, ${n.y - h/2})`}
                 onClick={() => onSelect(a.id)}
               >
@@ -177,8 +150,8 @@ function AgentGraph({ agents, relationships, selectedId, onSelect, onDeleteRelat
 }
 
 /* ─── List view ─── */
-function AgentListView({ agents, relationships, selectedId, onSelect }: {
-  agents: Agent[]; relationships: AgentRelationship[]; selectedId: string | null; onSelect: (id: string) => void
+function AgentListView({ agents, selectedId, onSelect }: {
+  agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void
 }) {
   return (
     <div className="alist">
@@ -188,12 +161,10 @@ function AgentListView({ agents, relationships, selectedId, onSelect }: {
         <span className="label">Type</span>
         <span className="label">Reports to</span>
         <span className="label">Schedule</span>
-        <span className="label">Status</span>
       </div>
       <ul className="alist__body">
         {agents.map(a => {
-          const reportsTo = relationships.find(r => r.from_agent_id === a.id && r.type === 'reports_to')
-          const parent = reportsTo ? agents.find(x => x.id === reportsTo.to_agent_id) : null
+          const parent = a.reports_to ? agents.find(x => x.id === a.reports_to) : null
           return (
             <li key={a.id} className={`alist__row${selectedId === a.id ? ' alist__row--active' : ''}`} onClick={() => onSelect(a.id)}>
               <span className="alist__cell">
@@ -203,12 +174,7 @@ function AgentListView({ agents, relationships, selectedId, onSelect }: {
               <span className="alist__cell alist__cell--dim">{a.role_title}</span>
               <span className="alist__cell"><span className={`tag-type tag-type--${a.type}`}>{a.type}</span></span>
               <span className="alist__cell alist__cell--dim">{parent?.name || '—'}</span>
-              <span className="alist__cell mono">{a.schedule ? `${a.schedule.interval_seconds}s` : '—'}</span>
-              <span className="alist__cell">
-                <span className="badge badge--dot" style={{'--dot': a.is_active ? 'var(--ok)' : 'var(--ink-4)'} as React.CSSProperties}>
-                  {a.is_active ? 'active' : 'paused'}
-                </span>
-              </span>
+              <span className="alist__cell mono">{a.schedule_enabled ? `${a.schedule_interval}s` : '—'}</span>
             </li>
           )
         })}
@@ -217,135 +183,34 @@ function AgentListView({ agents, relationships, selectedId, onSelect }: {
   )
 }
 
-/* ─── Config panel ─── */
-const DEFAULT_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+/* ─── Agent Config panel ─── */
+const AVAILABLE_TOOLS = [
+  'read_file', 'write_file', 'list_directory', 'web_search', 'fetch_url'
+]
 
-function ConnectorConfig({ agent, onUpdate }: { agent: Agent; onUpdate: (patch: Partial<Agent>) => void }) {
-  const globalSettings = loadSettings()
-  const cfg = (agent.connector_config || {}) as Record<string, string>
-
-  const [apiKey, setApiKey]     = useState(cfg.api_key ?? globalSettings.openrouter_api_key ?? '')
-  const [model, setModel]       = useState(cfg.model ?? globalSettings.default_model ?? 'anthropic/claude-sonnet-4-5')
-  const [apiUrl, setApiUrl]     = useState(cfg.api_url ?? DEFAULT_API_URL)
-  const [showKey, setShowKey]   = useState(false)
-  const [customModel, setCustomModel] = useState('')
-
-  const isCustomModel = !OPENROUTER_MODELS.some(m => m.id === model && m.id !== '__custom__')
-
-  useEffect(() => {
-    const c = (agent.connector_config || {}) as Record<string, string>
-    setApiKey(c.api_key ?? globalSettings.openrouter_api_key ?? '')
-    setModel(c.model ?? globalSettings.default_model ?? 'anthropic/claude-sonnet-4-5')
-    setApiUrl(c.api_url ?? DEFAULT_API_URL)
-  }, [agent.id])
-
-  const save = () => {
-    const finalModel = model === '__custom__' ? customModel.trim() : model
-    onUpdate({
-      connector_config: {
-        api_key: apiKey,
-        model: finalModel || 'anthropic/claude-sonnet-4-5',
-        api_url: apiUrl || DEFAULT_API_URL,
-      },
-    })
-  }
-
-  return (
-    <div className="connector-cfg">
-      <div className="field">
-        <label className="label">Model</label>
-        <select className="select" value={isCustomModel ? '__custom__' : model}
-          onChange={e => setModel(e.target.value)}>
-          {OPENROUTER_MODELS.map(m => (
-            <option key={m.id} value={m.id}>
-              {m.provider ? `${m.provider} — ${m.label}` : m.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      {(model === '__custom__' || isCustomModel) && (
-        <div className="field">
-          <label className="label">Custom model ID</label>
-          <input className="input mono" value={customModel || (isCustomModel ? model : '')}
-            onChange={e => setCustomModel(e.target.value)} placeholder="provider/model-name" spellCheck={false} />
-        </div>
-      )}
-      <div className="field">
-        <label className="label">API Key</label>
-        <div className="settings__key-wrap">
-          <input className="input" type={showKey ? 'text' : 'password'} value={apiKey}
-            onChange={e => setApiKey(e.target.value)} placeholder="sk-or-v1-…" autoComplete="off" spellCheck={false} />
-          <button className="btn btn--ghost btn--icon btn--sm settings__eye" type="button"
-            onClick={() => setShowKey(v => !v)}>
-            <Icon name={showKey ? 'eyeOff' : 'eye'} size={13} />
-          </button>
-        </div>
-        {!apiKey && globalSettings.openrouter_api_key && (
-          <p className="settings__hint">
-            <button className="btn btn--ghost btn--sm" style={{padding:'0 4px',height:'auto'}}
-              onClick={() => setApiKey(globalSettings.openrouter_api_key)}>
-              Use key from Settings
-            </button>
-          </p>
-        )}
-      </div>
-      <div className="field">
-        <label className="label">API URL</label>
-        <input className="input mono" value={apiUrl} onChange={e => setApiUrl(e.target.value)}
-          placeholder={DEFAULT_API_URL} spellCheck={false} />
-      </div>
-      <button className="btn btn--primary btn--sm" onClick={save}>Save connector config</button>
-    </div>
-  )
-}
-
-function AgentConfig({ agent, relationships, agents, onUpdate, onDelete, onClose, onUpsertSchedule, onDeleteRelation, onCreateRelation }: {
-  agent: Agent; relationships: AgentRelationship[]; agents: Agent[]
-  onUpdate: (patch: Partial<Agent>) => void; onDelete: () => void; onClose: () => void
-  onUpsertSchedule: (patch: Partial<Schedule>) => void
-  onDeleteRelation: (id: string) => void; onCreateRelation: (data: Omit<AgentRelationship, 'id'>) => void
+function AgentConfig({ agent, agents, skills, onUpdate, onDelete, onClose }: {
+  agent: Agent; agents: Agent[]; skills: SkillRead[]
+  onUpdate: (patch: Partial<Agent>) => void
+  onDelete: () => void; onClose: () => void
 }) {
-  const [tab, setTab] = useState<'general' | 'connector' | 'prompt' | 'scope' | 'schedule' | 'relations'>('general')
+  const [tab, setTab] = useState<'general' | 'model' | 'tools' | 'skills' | 'schedule'>('general')
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [scopeDraft, setScopeDraft] = useState(() => JSON.stringify(agent.authority_scope || {}, null, 2))
-  const [saving, setSaving] = useState(false)
   const [running, setRunning] = useState(false)
   const [runResult, setRunResult] = useState<'ok' | 'err' | null>(null)
 
-  useEffect(() => {
-    setScopeDraft(JSON.stringify(agent.authority_scope || {}, null, 2))
-    setConfirmDelete(false)
-    setRunResult(null)
-  }, [agent.id])
+  useEffect(() => { setConfirmDelete(false); setRunResult(null) }, [agent.id])
 
   const isAI = agent.type === 'ai'
-  const myRelations = relationships.filter(r => r.from_agent_id === agent.id || r.to_agent_id === agent.id)
-
-  const saveScope = async () => {
-    try {
-      const parsed = JSON.parse(scopeDraft)
-      await onUpdate({ authority_scope: parsed } as any)
-    } catch { alert('Invalid JSON in authority_scope') }
-  }
-
-  const save = async (patch: Partial<Agent>) => {
-    setSaving(true)
-    try { await onUpdate(patch) } finally { setSaving(false) }
-  }
+  const save = (patch: Partial<Agent>) => onUpdate(patch)
 
   const runNow = async () => {
     setRunning(true)
-    setRunResult(null)
-    try {
-      await agentsApi.run(agent.id)
-      setRunResult('ok')
-    } catch {
-      setRunResult('err')
-    } finally {
-      setRunning(false)
-      setTimeout(() => setRunResult(null), 3000)
-    }
+    try { await agentsApi.run(agent.id); setRunResult('ok') }
+    catch { setRunResult('err') }
+    finally { setRunning(false); setTimeout(() => setRunResult(null), 3000) }
   }
+
+  const tabs = ['general', ...(isAI ? ['model', 'tools', 'skills', 'schedule'] : [])] as const
 
   return (
     <aside className="agent-cfg">
@@ -353,23 +218,22 @@ function AgentConfig({ agent, relationships, agents, onUpdate, onDelete, onClose
         <div className="agent-cfg__identity">
           <div className={`avatar${isAI ? ' avatar--ai' : ' avatar--human'} avatar--xl`}>{initials(agent.name)}</div>
           <div className="agent-cfg__id-text">
-            <input className="agent-cfg__name" value={agent.name} onChange={e => onUpdate({ name: e.target.value })} onBlur={e => save({ name: e.target.value })} />
-            <input className="agent-cfg__role" value={agent.role_title} onChange={e => onUpdate({ role_title: e.target.value })} onBlur={e => save({ role_title: e.target.value })} />
-            <div className="agent-cfg__tags">
-              <span className={`tag-type tag-type--${agent.type}`}>{agent.type}</span>
-              <label className="agent-cfg__toggle-wrap" style={{ display:'inline-flex', alignItems:'center', gap:6, cursor:'pointer' }}>
-                <span className="label">Active</span>
-                <span className="toggle" data-on={agent.is_active ? 'true' : 'false'} onClick={() => save({ is_active: !agent.is_active })} />
-              </label>
-            </div>
+            <input className="agent-cfg__name" value={agent.name}
+              onChange={e => onUpdate({ name: e.target.value })}
+              onBlur={e => save({ name: e.target.value })} />
+            <input className="agent-cfg__role" value={agent.role_title}
+              onChange={e => onUpdate({ role_title: e.target.value })}
+              onBlur={e => save({ role_title: e.target.value })} />
+            <span className={`tag-type tag-type--${agent.type}`}>{agent.type}</span>
           </div>
-          <button className="btn btn--ghost btn--icon btn--sm agent-cfg__close" onClick={onClose}><Icon name="close" size={14}/></button>
+          <button className="btn btn--ghost btn--icon btn--sm agent-cfg__close" onClick={onClose}>
+            <Icon name="close" size={14}/>
+          </button>
         </div>
         <nav className="agent-cfg__tabs">
-          {(['general', ...(isAI ? ['connector', 'prompt'] : []), 'scope', ...(isAI ? ['schedule'] : []), 'relations'] as const).map(t => (
-            <button key={t} className={`agent-cfg__tab${tab === t ? ' agent-cfg__tab--active' : ''}`} onClick={() => setTab(t as any)}>
-              {t === 'relations' ? <>{t} <span className="mono">{myRelations.length}</span></> : t}
-            </button>
+          {tabs.map(t => (
+            <button key={t} className={`agent-cfg__tab${tab === t ? ' agent-cfg__tab--active' : ''}`}
+              onClick={() => setTab(t as any)}>{t}</button>
           ))}
         </nav>
       </header>
@@ -377,136 +241,145 @@ function AgentConfig({ agent, relationships, agents, onUpdate, onDelete, onClose
       <div className="agent-cfg__body">
         {tab === 'general' && (
           <>
-            <div className="field"><span className="label">ID</span><code className="mono" style={{fontSize:'var(--fs-xs)',color:'var(--ink-2)',background:'var(--bg-inset)',border:'1px solid var(--line-1)',padding:'5px 8px',borderRadius:3,display:'inline-block'}}>{agent.id}</code></div>
-            {isAI && (
-              <div className="field">
-                <label className="label">Connector type</label>
-                <select className="select" value={agent.connector_type || ''} onChange={e => save({ connector_type: e.target.value || null as any })}>
-                  <option value="">— None</option>
-                  <option value="http">http (OpenRouter / OpenAI-compatible)</option>
-                  <option value="opencode">opencode (headless CLI)</option>
-                </select>
-                {agent.connector_type === 'http' && (
-                  <p className="settings__hint">Configure model and API key in the <strong>connector</strong> tab.</p>
-                )}
-              </div>
-            )}
-            {!isAI && <div className="agent-cfg__note">Humans don't have connector settings. Use the Relations tab to wire this person into the graph.</div>}
+            <div className="field">
+              <span className="label">ID</span>
+              <code className="mono" style={{fontSize:'var(--fs-xs)',color:'var(--ink-2)',
+                background:'var(--bg-inset)',border:'1px solid var(--line-1)',
+                padding:'5px 8px',borderRadius:3,display:'inline-block'}}>{agent.id}</code>
+            </div>
+            <div className="field">
+              <label className="label">System prompt</label>
+              <textarea className="agent-cfg__prompt" rows={10}
+                value={agent.system_prompt}
+                onChange={e => onUpdate({ system_prompt: e.target.value })}
+                onBlur={e => save({ system_prompt: e.target.value })}
+                placeholder="Describe this agent's role, personality, constraints…"/>
+            </div>
+            <div className="field">
+              <label className="label">Reports to</label>
+              <select className="select"
+                value={agent.reports_to ?? ''}
+                onChange={e => save({ reports_to: e.target.value || null })}>
+                <option value="">— None (top-level)</option>
+                {agents.filter(a => a.id !== agent.id).map(a => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            </div>
           </>
         )}
 
-        {tab === 'connector' && isAI && (
-          <ConnectorConfig agent={agent} onUpdate={patch => save(patch)} />
+        {tab === 'model' && isAI && (
+          <>
+            <div className="field">
+              <label className="label">Model</label>
+              <input className="input mono" value={agent.model}
+                onChange={e => onUpdate({ model: e.target.value })}
+                onBlur={e => save({ model: e.target.value })}
+                placeholder="anthropic/claude-sonnet-4-5"/>
+              <p className="settings__hint">OpenRouter model ID. Leave blank to use org default.</p>
+            </div>
+            <div className="field">
+              <label className="label">API Key (optional)</label>
+              <input className="input" type="password"
+                value={agent.api_key ?? ''}
+                onChange={e => onUpdate({ api_key: e.target.value || null })}
+                onBlur={e => save({ api_key: e.target.value || null })}
+                placeholder="Overrides org key if set" autoComplete="off"/>
+            </div>
+            <div className="field">
+              <label className="label">Working directory</label>
+              <input className="input mono" value={agent.working_dir}
+                onChange={e => onUpdate({ working_dir: e.target.value })}
+                onBlur={e => save({ working_dir: e.target.value })}
+                placeholder="./workspaces/agent-id"/>
+            </div>
+          </>
         )}
 
-        {tab === 'prompt' && isAI && (
+        {tab === 'tools' && isAI && (
           <div className="field">
-            <label className="label">System prompt</label>
-            <textarea className="agent-cfg__prompt" rows={14} value={agent.system_prompt || ''} onChange={e => onUpdate({ system_prompt: e.target.value })} onBlur={e => save({ system_prompt: e.target.value })} placeholder="Describe this agent's role, voice, constraints…" />
-            <span style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}}>{(agent.system_prompt || '').length} characters · saved on blur</span>
+            <label className="label">Optional tools</label>
+            <p className="settings__hint">Always-on: post_comment, update_status, create_task, assign_task</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+              {AVAILABLE_TOOLS.map(tool => (
+                <label key={tool} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input type="checkbox"
+                    checked={agent.tools.includes(tool)}
+                    onChange={e => {
+                      const tools = e.target.checked
+                        ? [...agent.tools, tool]
+                        : agent.tools.filter(t => t !== tool)
+                      save({ tools })
+                    }}/>
+                  <span className="mono" style={{ fontSize: 'var(--fs-sm)' }}>{tool}</span>
+                </label>
+              ))}
+            </div>
           </div>
         )}
 
-        {tab === 'scope' && (
+        {tab === 'skills' && isAI && (
           <div className="field">
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-              <label className="label">Authority scope (JSON)</label>
-              <button className="btn btn--sm" onClick={saveScope}>Save</button>
-            </div>
-            <textarea className="agent-cfg__prompt" style={{fontFamily:'var(--font-mono)'}} rows={10} spellCheck={false} value={scopeDraft} onChange={e => setScopeDraft(e.target.value)} />
-            <span style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}}>Define what this agent is allowed to do without human approval.</span>
+            <label className="label">Assigned skills</label>
+            {skills.length === 0
+              ? <p className="settings__hint">No skills defined yet. Add skills on the Skills page.</p>
+              : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+                  {skills.map(skill => (
+                    <label key={skill.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <input type="checkbox"
+                        checked={agent.skills.includes(skill.id)}
+                        onChange={e => {
+                          const updated = e.target.checked
+                            ? [...agent.skills, skill.id]
+                            : agent.skills.filter(s => s !== skill.id)
+                          save({ skills: updated })
+                        }}/>
+                      <span>{skill.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
           </div>
         )}
 
         {tab === 'schedule' && isAI && (
           <>
-            {!agent.schedule ? (
-              <div className="agent-cfg__empty">
-                <div className="eyebrow">No schedule</div>
-                <p>This agent will not run on a schedule. Create one to run it automatically on an interval.</p>
-                <button className="btn btn--primary btn--sm" onClick={() => onUpsertSchedule({ interval_seconds: 300, is_enabled: true })}>
-                  <Icon name="clock" size={12}/>Create schedule
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="agent-cfg__sched-row">
-                  <div className="field">
-                    <label className="label">Interval</label>
-                    <div className="agent-cfg__interval">
-                      <input type="number" min={30} className="input" value={agent.schedule.interval_seconds}
-                        onChange={e => onUpsertSchedule({ interval_seconds: Number(e.target.value) })} />
-                      <span className="mono" style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}}>seconds</span>
-                    </div>
-                    <span style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}}>≈ every {formatInterval(agent.schedule.interval_seconds)}</span>
-                  </div>
-                  <div className="field">
-                    <label className="label">Enabled</label>
-                    <span className="toggle" data-on={agent.schedule.is_enabled ? 'true' : 'false'} onClick={() => onUpsertSchedule({ is_enabled: !agent.schedule?.is_enabled })} />
-                  </div>
-                </div>
-                <div className="agent-cfg__sched-meta">
-                  <div><span className="label">Last run</span><span className="mono" style={{fontSize:'var(--fs-xs)'}}>{agent.schedule.last_run_at || '—'}</span></div>
-                  <div><span className="label">Next run</span><span className="mono" style={{fontSize:'var(--fs-xs)'}}>{agent.schedule.next_run_at || '—'}</span></div>
-                </div>
-              </>
-            )}
-          </>
-        )}
-
-        {tab === 'relations' && (
-          <div className="agent-cfg__relations">
-            <div className="agent-cfg__rel-head">
-              <span className="label">Connections</span>
-              <button className="btn btn--sm" onClick={() => {
-                const other = agents.find(x => x.id !== agent.id)
-                if (other) onCreateRelation({ from_agent_id: agent.id, to_agent_id: other.id, type: 'collaborates_with' })
-              }}><Icon name="plus" size={11}/>Add</button>
+            <div className="field">
+              <label className="label">Schedule enabled</label>
+              <span className="toggle" data-on={agent.schedule_enabled ? 'true' : 'false'}
+                onClick={() => save({ schedule_enabled: !agent.schedule_enabled })}/>
             </div>
-            <ul className="rel-list">
-              {myRelations.map(r => {
-                const isOut = r.from_agent_id === agent.id
-                const otherId = isOut ? r.to_agent_id : r.from_agent_id
-                const other = agents.find(a => a.id === otherId)
-                return (
-                  <li key={r.id} className="rel">
-                    <span className="rel__dir mono">{isOut ? '→' : '←'}</span>
-                    <Icon name={r.type === 'reports_to' ? 'reportsTo' : 'collab'} size={13}/>
-                    <span className="rel__type mono">{r.type}</span>
-                    <div className={`avatar${other?.type === 'ai' ? ' avatar--ai' : ' avatar--human'} avatar--sm`}>{initials(other?.name || '?')}</div>
-                    <span className="rel__other">{other?.name}</span>
-                    <button className="btn btn--ghost btn--icon btn--sm" title="Remove" onClick={() => onDeleteRelation(r.id)}><Icon name="close" size={11}/></button>
-                  </li>
-                )
-              })}
-              {myRelations.length === 0 && <li className="rel-list__empty">No relationships yet.</li>}
-            </ul>
-          </div>
+            <div className="field">
+              <label className="label">Interval (seconds)</label>
+              <input type="number" min={30} className="input"
+                value={agent.schedule_interval}
+                onChange={e => onUpdate({ schedule_interval: Number(e.target.value) })}
+                onBlur={e => save({ schedule_interval: Number(e.target.value) })}/>
+              <p className="settings__hint">How often the agent checks for pending tasks.</p>
+            </div>
+          </>
         )}
       </div>
 
       <footer className="agent-cfg__foot">
-        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-          {isAI && agent.connector_type && (
-            <button
-              className="btn btn--primary btn--sm"
-              onClick={runNow}
-              disabled={running}
-              title="Trigger agent run now"
-            >
-              <Icon name={running ? 'pause' : 'play'} size={12}/>
-              {running ? 'Running…' : runResult === 'ok' ? 'Triggered ✓' : runResult === 'err' ? 'Error ✗' : 'Run now'}
-            </button>
-          )}
-        </div>
+        {isAI && (
+          <button className="btn btn--primary btn--sm" onClick={runNow} disabled={running}>
+            <Icon name={running ? 'pause' : 'play'} size={12}/>
+            {running ? 'Running…' : runResult === 'ok' ? 'Triggered ✓' : runResult === 'err' ? 'Error ✗' : 'Run now'}
+          </button>
+        )}
         {confirmDelete ? (
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-            <span style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}}>Delete agent?</span>
+            <span style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}}>Delete?</span>
             <button className="btn btn--sm" onClick={() => setConfirmDelete(false)}>Cancel</button>
             <button className="btn btn--danger btn--sm" onClick={onDelete}>Delete</button>
           </div>
         ) : (
-          <button className="btn btn--danger btn--sm" onClick={() => setConfirmDelete(true)}><Icon name="trash" size={12}/>Delete</button>
+          <button className="btn btn--danger btn--sm" onClick={() => setConfirmDelete(true)}>
+            <Icon name="trash" size={12}/>Delete
+          </button>
         )}
       </footer>
     </aside>
@@ -516,15 +389,27 @@ function AgentConfig({ agent, relationships, agents, onUpdate, onDelete, onClose
 /* ─── Create agent modal ─── */
 function CreateAgentModal({ onClose, onCreate }: {
   onClose: () => void
-  onCreate: (data: { name: string; role_title: string; type: 'ai' | 'human' }) => void
+  onCreate: (data: { id: string; name: string; role_title: string; type: 'ai' | 'human'; working_dir: string }) => void
 }) {
-  const [form, setForm] = useState({ name: '', role_title: '', type: 'ai' as 'ai' | 'human' })
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+  const [form, setForm] = useState({ id: '', name: '', role_title: '', type: 'ai' as 'ai' | 'human', working_dir: '' })
+  const set = (k: string, v: string) => {
+    setForm(f => {
+      const next = { ...f, [k]: v }
+      if (k === 'id') next.working_dir = v ? `./workspaces/${v}` : ''
+      return next
+    })
+  }
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    if (!form.name.trim() || !form.role_title.trim()) return
-    onCreate({ name: form.name.trim(), role_title: form.role_title.trim(), type: form.type })
+    if (!form.id.trim() || !form.name.trim() || !form.role_title.trim()) return
+    onCreate({
+      id: form.id.trim(),
+      name: form.name.trim(),
+      role_title: form.role_title.trim(),
+      type: form.type,
+      working_dir: form.working_dir.trim() || `./workspaces/${form.id.trim()}`,
+    })
   }
 
   return (
@@ -547,12 +432,20 @@ function CreateAgentModal({ onClose, onCreate }: {
           </div>
           <div className="modal__grid">
             <div className="field">
+              <label className="label">ID *</label>
+              <input className="input mono" autoFocus value={form.id} onChange={e => set('id', e.target.value)} placeholder="e.g. scout-agent" required />
+            </div>
+            <div className="field">
               <label className="label">Name *</label>
-              <input className="input" autoFocus value={form.name} onChange={e => set('name', e.target.value)} placeholder={form.type === 'ai' ? 'e.g. Scout' : 'Alex Mercier'} required />
+              <input className="input" value={form.name} onChange={e => set('name', e.target.value)} placeholder={form.type === 'ai' ? 'e.g. Scout' : 'Alex Mercier'} required />
             </div>
             <div className="field">
               <label className="label">Role *</label>
               <input className="input" value={form.role_title} onChange={e => set('role_title', e.target.value)} placeholder={form.type === 'ai' ? 'Research Agent' : 'Head of Operations'} required />
+            </div>
+            <div className="field">
+              <label className="label">Working directory</label>
+              <input className="input mono" value={form.working_dir} onChange={e => set('working_dir', e.target.value)} placeholder="./workspaces/agent-id" />
             </div>
           </div>
         </form>
@@ -568,86 +461,26 @@ function CreateAgentModal({ onClose, onCreate }: {
   )
 }
 
-/* ─── Create relation modal ─── */
-function CreateRelationModal({ agents, onClose, onCreate }: {
-  agents: Agent[]; onClose: () => void
-  onCreate: (data: Omit<AgentRelationship, 'id'>) => void
-}) {
-  const [from, setFrom] = useState(agents[0]?.id || '')
-  const [to, setTo] = useState(agents[1]?.id || '')
-  const [type, setType] = useState<'reports_to' | 'collaborates_with'>('reports_to')
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault()
-    if (!from || !to || from === to) return
-    onCreate({ from_agent_id: from, to_agent_id: to, type })
-  }
-
-  return (
-    <div className="modal" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal__panel">
-        <header className="modal__head">
-          <div className="eyebrow">New relationship</div>
-          <h2>Create a connection</h2>
-          <button className="btn btn--ghost btn--icon btn--sm modal__close" onClick={onClose}><Icon name="close" size={14}/></button>
-        </header>
-        <form onSubmit={submit} className="modal__body">
-          <div className="relbuilder">
-            <div className="field">
-              <label className="label">From</label>
-              <select className="select" value={from} onChange={e => setFrom(e.target.value)}>
-                {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-            </div>
-            <div className="relbuilder__arrow">
-              <Icon name="arrowRight" size={16}/>
-            </div>
-            <div className="field">
-              <label className="label">To</label>
-              <select className="select" value={to} onChange={e => setTo(e.target.value)}>
-                {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="field">
-            <label className="label">Relationship type</label>
-            <div className="segmented">
-              {(['reports_to','collaborates_with'] as const).map(t => (
-                <button key={t} type="button" className={`segmented__btn${type === t ? ' segmented__btn--active' : ''}`} onClick={() => setType(t)}>
-                  <Icon name={t === 'reports_to' ? 'reportsTo' : 'collab'} size={13}/>{t.replace('_',' ')}
-                </button>
-              ))}
-            </div>
-          </div>
-        </form>
-        <div className="modal__foot">
-          <div/>
-          <div style={{ display:'flex', gap:8 }}>
-            <button className="btn" onClick={onClose}>Cancel</button>
-            <button className="btn btn--primary" onClick={submit}>Create</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 /* ─── Main page ─── */
 export default function GraphPage() {
   const { user } = useAuth()
   const [agents, setAgents] = useState<Agent[]>([])
-  const [relationships, setRelationships] = useState<AgentRelationship[]>([])
+  const [edges, setEdges] = useState<GraphEdge[]>([])
+  const [skills, setSkills] = useState<SkillRead[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'ai' | 'human'>('all')
   const [view, setView] = useState<'graph' | 'list'>('graph')
   const [creating, setCreating] = useState(false)
-  const [creatingRel, setCreatingRel] = useState(false)
 
   useEffect(() => {
-    Promise.all([agentsApi.list(), graphApi.get()])
-      .then(([agentList, graph]) => { setAgents(agentList); setRelationships(graph.edges) })
+    Promise.all([graphApi.get(), skillsApi.list().catch(() => [] as SkillRead[])])
+      .then(([data, skillList]) => {
+        setAgents(data.nodes)
+        setEdges(data.edges)
+        setSkills(skillList)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -664,44 +497,31 @@ export default function GraphPage() {
 
   const updateAgent = useCallback((id: string, patch: Partial<Agent>) => {
     setAgents(as => as.map(a => a.id === id ? { ...a, ...patch } : a))
+    // If reports_to changed, update edges accordingly
+    if ('reports_to' in patch) {
+      setEdges(es => {
+        const withoutOld = es.filter(e => !(e.from_agent_id === id && e.type === 'reports_to'))
+        if (patch.reports_to) {
+          return [...withoutOld, { id: `${id}_reports_to_${patch.reports_to}`, from_agent_id: id, to_agent_id: patch.reports_to, type: 'reports_to' }]
+        }
+        return withoutOld
+      })
+    }
     agentsApi.update(id, patch).catch(() => {})
   }, [])
 
   const deleteAgent = useCallback(async (id: string) => {
     await agentsApi.delete(id).catch(() => {})
     setAgents(as => as.filter(a => a.id !== id))
-    setRelationships(rs => rs.filter(r => r.from_agent_id !== id && r.to_agent_id !== id))
+    setEdges(es => es.filter(e => e.from_agent_id !== id && e.to_agent_id !== id))
     if (selectedId === id) setSelectedId(null)
   }, [selectedId])
 
-  const createAgent = useCallback(async (data: { name: string; role_title: string; type: 'ai' | 'human' }) => {
+  const createAgent = useCallback(async (data: { id: string; name: string; role_title: string; type: 'ai' | 'human'; working_dir: string }) => {
     const a = await agentsApi.create(data).catch(() => null)
     if (a) { setAgents(as => [...as, a]); setSelectedId(a.id) }
     setCreating(false)
   }, [])
-
-  const deleteRelation = useCallback(async (id: string) => {
-    setRelationships(rs => rs.filter(r => r.id !== id))
-    graphApi.deleteRelationship(id).catch(() => {})
-  }, [])
-
-  const createRelation = useCallback(async (data: Omit<AgentRelationship, 'id'>) => {
-    const r = await graphApi.createRelationship(data.from_agent_id, data.to_agent_id, data.type).catch(() => null)
-    if (r) setRelationships(rs => [...rs, r])
-    setCreatingRel(false)
-  }, [])
-
-  const upsertSchedule = useCallback(async (agentId: string, patch: Partial<Schedule>) => {
-    const agent = agents.find(a => a.id === agentId)
-    if (!agent) return
-    if (agent.schedule) {
-      const updated = await schedulesApi.update(agent.schedule.id, patch).catch(() => null)
-      if (updated) updateAgent(agentId, { schedule: updated } as any)
-    } else {
-      const created = await schedulesApi.create(agentId, patch.interval_seconds || 300).catch(() => null)
-      if (created) updateAgent(agentId, { schedule: created } as any)
-    }
-  }, [agents, updateAgent])
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100vh', minHeight:0 }}>
@@ -713,7 +533,6 @@ export default function GraphPage() {
             <button className={`viewtoggle__btn${view === 'graph' ? ' viewtoggle__btn--active' : ''}`} onClick={() => setView('graph')}><Icon name="graph" size={13}/>Graph</button>
             <button className={`viewtoggle__btn${view === 'list' ? ' viewtoggle__btn--active' : ''}`} onClick={() => setView('list')}><Icon name="list" size={13}/>List</button>
           </div>
-          <button className="btn btn--sm" onClick={() => setCreatingRel(true)}><Icon name="link" size={12}/>New relationship</button>
           <button className="btn btn--primary btn--sm" onClick={() => setCreating(true)}><Icon name="plus" size={12}/>New agent</button>
         </div>
       </header>
@@ -736,7 +555,7 @@ export default function GraphPage() {
             {loading && <li style={{padding:12,color:'var(--ink-3)',fontSize:'var(--fs-sm)'}}>Loading…</li>}
             {filtered.map(a => (
               <li key={a.id}
-                className={`agent-row${selectedId === a.id ? ' agent-row--active' : ''}${!a.is_active ? ' agent-row--inactive' : ''}`}
+                className={`agent-row${selectedId === a.id ? ' agent-row--active' : ''}`}
                 onClick={() => setSelectedId(id => id === a.id ? null : a.id)}
               >
                 <div className={`avatar${a.type === 'ai' ? ' avatar--ai' : ' avatar--human'}`}>{initials(a.name)}</div>
@@ -756,9 +575,9 @@ export default function GraphPage() {
         {/* Canvas */}
         <section className="agents__canvas">
           {view === 'graph' ? (
-            <AgentGraph agents={agents} relationships={relationships} selectedId={selectedId} onSelect={id => setSelectedId(i => i === id ? null : id)} onDeleteRelation={deleteRelation} />
+            <AgentGraph agents={agents} edges={edges} selectedId={selectedId} onSelect={id => setSelectedId(i => i === id ? null : id)} />
           ) : (
-            <AgentListView agents={filtered} relationships={relationships} selectedId={selectedId} onSelect={id => setSelectedId(i => i === id ? null : id)} />
+            <AgentListView agents={filtered} selectedId={selectedId} onSelect={id => setSelectedId(i => i === id ? null : id)} />
           )}
         </section>
 
@@ -767,20 +586,16 @@ export default function GraphPage() {
           <AgentConfig
             key={selected.id}
             agent={selected}
-            relationships={relationships}
             agents={agents}
+            skills={skills}
             onUpdate={patch => updateAgent(selected.id, patch)}
             onDelete={() => deleteAgent(selected.id)}
             onClose={() => setSelectedId(null)}
-            onUpsertSchedule={patch => upsertSchedule(selected.id, patch)}
-            onDeleteRelation={deleteRelation}
-            onCreateRelation={createRelation}
           />
         )}
       </div>
 
       {creating && <CreateAgentModal onClose={() => setCreating(false)} onCreate={createAgent} />}
-      {creatingRel && agents.length >= 2 && <CreateRelationModal agents={agents} onClose={() => setCreatingRel(false)} onCreate={createRelation} />}
     </div>
   )
 }
