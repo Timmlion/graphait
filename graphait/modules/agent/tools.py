@@ -109,10 +109,15 @@ def execute_tool(name: str, args: dict, ctx: ToolContext) -> str:
         return f"Error executing {name}: {e}"
 
 
+def _to_uuid(value: str) -> "uuid.UUID":
+    import uuid as _uuid
+    return _uuid.UUID(value) if isinstance(value, str) else value
+
+
 def _post_comment(args: dict, ctx: ToolContext) -> str:
     import uuid
     from graphait.models.task import Comment
-    ctx.db.add(Comment(task_id=uuid.UUID(ctx.task_id), author_id=ctx.agent_id,
+    ctx.db.add(Comment(task_id=uuid.UUID(ctx.task_id), author_id=_to_uuid(ctx.agent_id),
                        content=args["content"], is_system=False))
     ctx.db.commit()
     return "Comment posted."
@@ -126,7 +131,7 @@ def _update_status(args: dict, ctx: ToolContext) -> str:
         return "Error: task not found"
     task.status = args["status"]
     if args.get("comment"):
-        ctx.db.add(Comment(task_id=task.id, author_id=ctx.agent_id,
+        ctx.db.add(Comment(task_id=task.id, author_id=_to_uuid(ctx.agent_id),
                            content=args["comment"], is_system=False))
     ctx.db.commit()
     return f"Status updated to '{args['status']}'."
@@ -139,7 +144,8 @@ def _create_task(args: dict, ctx: ToolContext) -> str:
     org_id = uuid.UUID(ctx.org_id)
     num = (ctx.db.query(func.max(Task.number)).filter(Task.org_id == org_id).scalar() or 0) + 1
     task = Task(org_id=org_id, title=args["title"], description=args.get("description"),
-                creator_id=ctx.agent_id, assignee_id=args.get("assignee_id"),
+                creator_id=_to_uuid(ctx.agent_id),
+                assignee_id=_to_uuid(args["assignee_id"]) if args.get("assignee_id") else None,
                 priority=TaskPriority(args.get("priority", "medium")),
                 status=TaskStatus.todo, number=num)
     ctx.db.add(task)
