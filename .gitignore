@@ -34,3 +34,5 @@ env/
 *~
 .DS_Store
 .worktrees/
+config/
+workspaces/
