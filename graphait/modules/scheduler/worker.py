@@ -109,7 +109,12 @@ async def _execute_action(db: Session, agent: Agent, action: Action) -> None:
                      action.type, agent.id, action.payload, e)
 
 
-async def run_agent_tick(agent_id: uuid.UUID) -> None:
+async def run_agent_tick(agent_id) -> None:  # accepts str or uuid.UUID; full refactor in Task 11
+    # If agent_id is a string (file-backed agent), the DB worker does not apply yet.
+    # Return early until Task 11 wires the new file-backed execution pipeline.
+    if isinstance(agent_id, str):
+        logger.info("run_agent_tick: file-backed agent '%s' — skipping DB tick (Task 11)", agent_id)
+        return
     db = SessionLocal()
     try:
         agent = db.get(Agent, agent_id)

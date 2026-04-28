@@ -1,62 +1,82 @@
-import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from graphait.database import get_db
 from graphait.api.deps import get_current_user
-from graphait.models.agent import AgentType
+from graphait.config.loader import AgentConfig, load_agent, load_agents, save_agent, delete_agent
 from graphait.models.user import User
-from graphait.modules.agents.service import agent_service
-from graphait.modules.scheduler.worker import run_agent_tick
+from graphait.modules.scheduler.service import scheduler_service
 from graphait.schemas.agent import AgentCreate, AgentUpdate, AgentRead
 
 router = APIRouter()
 
 
-def _get_agent_or_404(agent_id: uuid.UUID, current_user: User, db: Session):
-    agent = agent_service.get(db, agent_id, current_user.org_id)
-    if not agent:
+def _get_or_404(agent_id: str) -> AgentConfig:
+    cfg = load_agent(agent_id)
+    if not cfg:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
-    return agent
-
-
-@router.post("", response_model=AgentRead, status_code=status.HTTP_201_CREATED)
-def create_agent(body: AgentCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return agent_service.create(db, current_user.org_id, body)
+    return cfg
 
 
 @router.get("", response_model=list[AgentRead])
-def list_agents(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return agent_service.list(db, current_user.org_id)
+def list_agents(_: User = Depends(get_current_user)):
+    return [AgentRead(**vars(a)) for a in load_agents()]
+
+
+@router.post("", response_model=AgentRead, status_code=status.HTTP_201_CREATED)
+def create_agent(body: AgentCreate, _: User = Depends(get_current_user)):
+    if load_agent(body.id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail=f"Agent '{body.id}' already exists")
+    cfg = AgentConfig(**body.model_dump())
+    save_agent(cfg)
+    if cfg.type == "ai" and cfg.schedule_enabled:
+        try:
+            scheduler_service.schedule_agent(cfg.id, cfg.schedule_interval)
+        except Exception:
+            pass  # Scheduler will be properly wired in Task 11
+    return AgentRead(**vars(cfg))
 
 
 @router.get("/{agent_id}", response_model=AgentRead)
-def get_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return _get_agent_or_404(agent_id, current_user, db)
+def get_agent(agent_id: str, _: User = Depends(get_current_user)):
+    return AgentRead(**vars(_get_or_404(agent_id)))
 
 
 @router.patch("/{agent_id}", response_model=AgentRead)
-def update_agent(agent_id: uuid.UUID, body: AgentUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    agent = _get_agent_or_404(agent_id, current_user, db)
-    return agent_service.update(db, agent, body)
+def update_agent(agent_id: str, body: AgentUpdate, _: User = Depends(get_current_user)):
+    cfg = _get_or_404(agent_id)
+    updates = body.model_dump(exclude_unset=True)
+    for k, v in updates.items():
+        setattr(cfg, k, v)
+    save_agent(cfg)
+    if cfg.type == "ai":
+        if cfg.schedule_enabled:
+            try:
+                scheduler_service.schedule_agent(cfg.id, cfg.schedule_interval)
+            except Exception:
+                pass  # Scheduler will be properly wired in Task 11
+        else:
+            try:
+                scheduler_service.remove_agent(cfg.id)
+            except Exception:
+                pass  # Scheduler will be properly wired in Task 11
+    return AgentRead(**vars(cfg))
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    agent = _get_agent_or_404(agent_id, current_user, db)
-    agent_service.delete(db, agent)
+def delete_agent_endpoint(agent_id: str, _: User = Depends(get_current_user)):
+    _get_or_404(agent_id)
+    delete_agent(agent_id)
+    try:
+        scheduler_service.remove_agent(agent_id)
+    except Exception:
+        pass  # Scheduler will be properly wired in Task 11
 
 
 @router.post("/{agent_id}/run", status_code=status.HTTP_202_ACCEPTED)
-async def run_agent_now(
-    agent_id: uuid.UUID,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    agent = _get_agent_or_404(agent_id, current_user, db)
-    if agent.type != AgentType.ai:
-        raise HTTPException(status_code=400, detail="Only AI agents can be triggered manually")
-    if not agent.connector_type:
-        raise HTTPException(status_code=400, detail="Agent has no connector configured")
-    background_tasks.add_task(run_agent_tick, agent.id)
-    return {"status": "triggered", "agent_id": str(agent_id)}
+async def run_agent_now(agent_id: str, background_tasks: BackgroundTasks,
+                        _: User = Depends(get_current_user)):
+    cfg = _get_or_404(agent_id)
+    if cfg.type != "ai":
+        raise HTTPException(status_code=400, detail="Only AI agents can be triggered")
+    from graphait.modules.scheduler.worker import run_agent_tick
+    background_tasks.add_task(run_agent_tick, agent_id)
+    return {"status": "triggered", "agent_id": agent_id}
