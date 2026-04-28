@@ -1,9 +1,7 @@
-import uuid
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
-from graphait.modules.scheduler.worker import run_agent_tick
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +19,8 @@ class SchedulerService:
         if self._scheduler:
             self._scheduler.shutdown(wait=False)
 
-    def schedule_agent(self, agent_id: uuid.UUID, interval_seconds: int) -> None:
+    def schedule_agent(self, agent_id: str, interval_seconds: int) -> None:
         if not self._scheduler:
-            logger.warning("schedule_agent called but scheduler is not running (agent_id=%s)", agent_id)
             return
         job_id = f"agent_{agent_id}"
         self._scheduler.add_job(
@@ -36,15 +33,34 @@ class SchedulerService:
             next_run_time=datetime.now(timezone.utc) + timedelta(seconds=interval_seconds),
         )
 
-    def remove_agent(self, agent_id: uuid.UUID) -> None:
+    def remove_agent(self, agent_id: str) -> None:
         if not self._scheduler:
             return
         job_id = f"agent_{agent_id}"
         if self._scheduler.get_job(job_id):
             self._scheduler.remove_job(job_id)
 
+    def trigger_agent(self, agent_id: str) -> None:
+        """Fire agent immediately (called when task is assigned)."""
+        if not self._scheduler:
+            return
+        job_id = f"agent_{agent_id}"
+        job = self._scheduler.get_job(job_id)
+        if job:
+            job.modify(next_run_time=datetime.now(timezone.utc))
+        else:
+            self._scheduler.add_job(
+                _run_sync,
+                "date",
+                run_date=datetime.now(timezone.utc),
+                args=[agent_id],
+                id=f"trigger_{agent_id}",
+                replace_existing=True,
+            )
 
-def _run_sync(agent_id: uuid.UUID) -> None:
+
+def _run_sync(agent_id: str) -> None:
+    from graphait.modules.scheduler.worker import run_agent_tick
     asyncio.run(run_agent_tick(agent_id))
 
 

@@ -1,151 +1,42 @@
-import uuid
 import asyncio
 import logging
-from datetime import datetime, timezone
-from sqlalchemy.orm import Session
 from graphait.database import SessionLocal
-from graphait.models.agent import Agent, AgentRelationship, RelationshipType, AgentType
-from graphait.models.task import Task, TaskStatus, Comment
-from graphait.connectors.base import AgentContext, Action
-from graphait.connectors.http.connector import HTTPConnector
-from graphait.connectors.opencode.connector import OpenCodeConnector
-from graphait.modules.tasks.service import task_service
-from graphait.modules.tasks.comment_service import comment_service
-from graphait.schemas.task import TaskCreate, TaskUpdate
-from graphait.schemas.comment import CommentCreate
+from graphait.models.task import Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 
-CONNECTOR_MAP = {
-    "http": HTTPConnector(),
-    "opencode": OpenCodeConnector(),
-}
 
+async def run_agent_tick(agent_id: str) -> None:
+    from graphait.config.loader import load_agent, load_org
+    from graphait.modules.agent.loop import AgentLoop
+    from graphait.modules.scheduler.service import scheduler_service
 
-def _build_context(db: Session, agent: Agent) -> AgentContext:
-    tasks_q = db.query(Task).filter(
-        Task.assignee_id == agent.id,
-        Task.status.in_([TaskStatus.todo, TaskStatus.in_progress, TaskStatus.waiting_approval]),
-    ).all()
-
-    tasks_data = []
-    for t in tasks_q:
-        comments = db.query(Comment).filter(Comment.task_id == t.id).order_by(Comment.created_at).all()
-        tasks_data.append({
-            "id": str(t.id),
-            "title": t.title,
-            "description": t.description,
-            "status": t.status.value,
-            "priority": t.priority.value,
-            "comments": [{"author": str(c.author_id), "content": c.content} for c in comments],
-        })
-
-    supervisor_rel = db.query(AgentRelationship).filter(
-        AgentRelationship.from_agent_id == agent.id,
-        AgentRelationship.type == RelationshipType.reports_to,
-    ).first()
-    supervisor_name = None
-    if supervisor_rel:
-        sup = db.get(Agent, supervisor_rel.to_agent_id)
-        supervisor_name = sup.name if sup else None
-
-    sub_rels = db.query(AgentRelationship).filter(
-        AgentRelationship.to_agent_id == agent.id,
-        AgentRelationship.type == RelationshipType.reports_to,
-    ).all()
-    subordinate_names = []
-    for rel in sub_rels:
-        sub = db.get(Agent, rel.from_agent_id)
-        if sub:
-            subordinate_names.append(sub.name)
-
-    return AgentContext(
-        agent_id=agent.id,
-        agent_name=agent.name,
-        role_title=agent.role_title,
-        system_prompt=agent.system_prompt,
-        authority_scope=agent.authority_scope,
-        tasks=tasks_data,
-        subordinate_names=subordinate_names,
-        supervisor_name=supervisor_name,
-    )
-
-
-async def _execute_action(db: Session, agent: Agent, action: Action) -> None:
-    try:
-        if action.type == "comment":
-            task = task_service.get(db, uuid.UUID(action.payload["task_id"]), agent.org_id)
-            if task:
-                comment_service.create(db, task.id, agent.id, CommentCreate(content=action.payload["content"]))
-
-        elif action.type == "update_status":
-            task = task_service.get(db, uuid.UUID(action.payload["task_id"]), agent.org_id)
-            if task:
-                task_service.update(db, task, TaskUpdate(status=action.payload["status"]))
-
-        elif action.type == "create_task":
-            task_service.create(db, agent.org_id, agent.id, TaskCreate(
-                title=action.payload["title"],
-                description=action.payload.get("description"),
-                assignee_id=uuid.UUID(action.payload["assignee_id"]) if action.payload.get("assignee_id") else None,
-            ))
-
-        elif action.type == "escalate":
-            rel = db.query(AgentRelationship).filter(
-                AgentRelationship.from_agent_id == agent.id,
-                AgentRelationship.type == RelationshipType.reports_to,
-            ).first()
-            if rel:
-                task_service.create(db, agent.org_id, agent.id, TaskCreate(
-                    title=f"[ESCALATION] from {agent.name}",
-                    description=action.payload.get("message", ""),
-                    assignee_id=rel.to_agent_id,
-                    task_type="approval_request",
-                ))
-        else:
-            logger.warning("Unknown action type '%s' from agent %s", action.type, agent.id)
-    except Exception as e:
-        logger.error("Failed to execute action %s for agent %s (payload=%s): %s",
-                     action.type, agent.id, action.payload, e)
-
-
-async def run_agent_tick(agent_id) -> None:  # accepts str or uuid.UUID; full refactor in Task 11
-    # If agent_id is a string (file-backed agent), the DB worker does not apply yet.
-    # Return early until Task 11 wires the new file-backed execution pipeline.
-    if isinstance(agent_id, str):
-        logger.info("run_agent_tick: file-backed agent '%s' — skipping DB tick (Task 11)", agent_id)
+    agent_cfg = load_agent(agent_id)
+    if not agent_cfg or agent_cfg.type != "ai":
         return
-    db = SessionLocal()
-    try:
-        agent = db.get(Agent, agent_id)
-        if not agent or not agent.is_active or agent.type != AgentType.ai:
+
+    with SessionLocal() as db:
+        task = (
+            db.query(Task)
+            .filter(
+                Task.assignee_id == agent_id,
+                Task.status.in_([TaskStatus.todo, TaskStatus.in_progress]),
+            )
+            .order_by(Task.created_at)
+            .first()
+        )
+        if not task:
             return
-        if not agent.connector_type or agent.connector_type not in CONNECTOR_MAP:
-            logger.warning("Agent %s has no valid connector", agent_id)
-            return
 
-        context = _build_context(db, agent)
-        connector = CONNECTOR_MAP[agent.connector_type]
-
-        # Merge org-level settings as fallback for connector_config
-        agent_cfg = dict(agent.connector_config or {})
-        if not agent_cfg.get("api_key"):
-            org_settings = agent.organization.settings or {}
-            if org_settings.get("openrouter_api_key"):
-                agent_cfg["api_key"] = org_settings["openrouter_api_key"]
-        if not agent_cfg.get("model"):
-            org_settings = agent.organization.settings or {}
-            if org_settings.get("default_model"):
-                agent_cfg["model"] = org_settings["default_model"]
-
-        actions = await connector.run(context, agent_cfg)
-
-        for action in actions:
-            await _execute_action(db, agent, action)
-
-        schedule = agent.schedule
-        if schedule:
-            schedule.last_run_at = datetime.now(timezone.utc)
-        db.commit()
-    finally:
-        db.close()
+        org_cfg = load_org()
+        loop = AgentLoop(
+            agent=agent_cfg,
+            org=org_cfg,
+            task=task,
+            db=db,
+            scheduler_trigger=scheduler_service.trigger_agent,
+        )
+        try:
+            await loop.run()
+        except Exception as e:
+            logger.error("AgentLoop error (agent=%s task=%s): %s", agent_id, task.id, e)
