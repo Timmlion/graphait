@@ -72,6 +72,16 @@ async def test_loop_completes_on_text_response(db):
     assert comments[0].is_system == False
     assert "Tests are done!" in comments[0].content
 
+    # Verify AgentRun was created and closed
+    from graphait.models.run import AgentRun, RunEvent, RunStatus, RunEventRole
+    run = db.query(AgentRun).first()
+    assert run is not None
+    assert run.status == RunStatus.done
+    assert run.finished_at is not None
+    events = db.query(RunEvent).filter(RunEvent.run_id == run.id).all()
+    assert any(e.role == RunEventRole.user for e in events)
+    assert any(e.role == RunEventRole.assistant for e in events)
+
 
 @pytest.mark.asyncio
 async def test_loop_executes_tool_then_completes(db):
@@ -102,3 +112,11 @@ async def test_loop_executes_tool_then_completes(db):
     from graphait.models.task import Comment
     comments = db.query(Comment).filter(Comment.task_id == task.id).all()
     assert any("Working on it." in c.content for c in comments)
+
+    # Verify tool events were logged
+    from graphait.models.run import AgentRun, RunEvent, RunStatus, RunEventRole
+    run = db.query(AgentRun).first()
+    assert run.status == RunStatus.done
+    events = db.query(RunEvent).filter(RunEvent.run_id == run.id).all()
+    assert any(e.role == RunEventRole.tool_call for e in events)
+    assert any(e.role == RunEventRole.tool_result for e in events)

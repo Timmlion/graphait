@@ -82,6 +82,27 @@ class AgentLoop:
         return self.task.assignee_id if self.task.assignee_id else self.task.creator_id
 
     async def run(self) -> None:
+        from graphait.models.run import AgentRun, RunEvent, RunStatus, RunEventRole
+        from datetime import datetime
+
+        run = AgentRun(
+            agent_id=self.agent.id,
+            task_id=self.task.id,
+            status=RunStatus.running,
+        )
+        self.db.add(run)
+        self.db.commit()
+        self.db.refresh(run)
+
+        def _log(role: RunEventRole, content: str, tool_name: str | None = None) -> None:
+            self.db.add(RunEvent(run_id=run.id, role=role, content=content, tool_name=tool_name))
+            self.db.commit()
+
+        def _close(status: RunStatus) -> None:
+            run.finished_at = datetime.utcnow()
+            run.status = status
+            self.db.commit()
+
         tools = get_tool_schemas(self.agent.tools)
         ctx = ToolContext(db=self.db, org_id=str(self.task.org_id),
                          task_id=str(self.task.id), agent_id=self._agent_db_id(),
@@ -92,6 +113,7 @@ class AgentLoop:
             {"role": "system", "content": self._system_prompt()},
             {"role": "user", "content": self._task_message()},
         ]
+        _log(RunEventRole.user, self._task_message())
 
         for iteration in range(MAX_ITERATIONS):
             try:
@@ -99,6 +121,7 @@ class AgentLoop:
             except Exception as e:
                 logger.error("API error (agent=%s iter=%d): %s", self.agent.id, iteration, e)
                 self._system_comment(f"API error: {e}")
+                _close(RunStatus.error)
                 break
 
             msg = data["choices"][0]["message"]
@@ -108,7 +131,9 @@ class AgentLoop:
             if not tool_calls:
                 if msg.get("content"):
                     self._agent_comment(msg["content"])
+                    _log(RunEventRole.assistant, msg["content"])
                 self._set_status("done")
+                _close(RunStatus.done)
                 return
 
             for tc in tool_calls:
@@ -117,12 +142,18 @@ class AgentLoop:
                     args = json.loads(fn["arguments"])
                 except json.JSONDecodeError:
                     args = {}
+                _log(RunEventRole.tool_call, fn["arguments"], tool_name=fn["name"])
                 result = execute_tool(fn["name"], args, ctx)
                 messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
+                _log(RunEventRole.tool_result, result, tool_name=fn["name"])
                 if fn["name"] == "update_status":
+                    finish_status = (RunStatus.blocked if args.get("status") == "blocked"
+                                     else RunStatus.done)
+                    _close(finish_status)
                     return
 
         self._system_comment("Reached iteration limit without completing task.")
+        _close(RunStatus.limit_reached)
 
     def _system_comment(self, content: str) -> None:
         self.db.add(Comment(task_id=self.task.id, author_id=self._agent_db_id(),
