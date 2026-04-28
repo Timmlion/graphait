@@ -48,8 +48,8 @@ def make_task(db):
 
     task = Task(id=uuid.uuid4(), org_id=org_id, number=1, title="Write tests",
                 description="Add unit tests.", status=TaskStatus.todo,
-                priority=TaskPriority.high, creator_id=agent_uuid,
-                assignee_id=agent_uuid)
+                priority=TaskPriority.high, creator_id=str(agent_uuid),
+                assignee_id=str(agent_uuid))
     db.add(task)
     db.flush()
     return task

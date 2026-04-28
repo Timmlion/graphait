@@ -8,7 +8,6 @@ from graphait.database import Base
 
 if TYPE_CHECKING:
     from graphait.models.user import User
-    from graphait.models.agent import Agent
 
 
 class Organization(Base):
@@ -21,4 +20,3 @@ class Organization(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     users: Mapped[list[User]] = relationship("User", back_populates="organization")
-    agents: Mapped[list[Agent]] = relationship("Agent", back_populates="organization")

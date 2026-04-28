@@ -10,7 +10,7 @@ class TaskCreate(BaseModel):
     description: Optional[str] = None
     priority: TaskPriority = TaskPriority.medium
     task_type: TaskType = TaskType.task
-    assignee_id: Optional[uuid.UUID] = None
+    assignee_id: Optional[str] = None
     parent_task_id: Optional[uuid.UUID] = None
 
 
@@ -19,7 +19,7 @@ class TaskUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
-    assignee_id: Optional[uuid.UUID] = None
+    assignee_id: Optional[str] = None
 
 
 class TaskRead(BaseModel):
@@ -31,8 +31,8 @@ class TaskRead(BaseModel):
     status: TaskStatus
     priority: TaskPriority
     task_type: TaskType
-    assignee_id: Optional[uuid.UUID]
-    creator_id: uuid.UUID
+    assignee_id: Optional[str]
+    creator_id: Optional[str]
     parent_task_id: Optional[uuid.UUID]
     created_at: datetime
     updated_at: datetime

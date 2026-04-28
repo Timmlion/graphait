@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel
 
 
@@ -10,7 +11,7 @@ class CommentCreate(BaseModel):
 class CommentRead(BaseModel):
     id: uuid.UUID
     task_id: uuid.UUID
-    author_id: uuid.UUID
+    author_id: Optional[str]
     content: str
     is_system: bool
     created_at: datetime

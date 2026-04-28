@@ -11,7 +11,7 @@ class TaskService:
         result = db.query(func.max(Task.number)).filter(Task.org_id == org_id).scalar()
         return (result or 0) + 1
 
-    def create(self, db: Session, org_id: uuid.UUID, creator_id: uuid.UUID, data: TaskCreate) -> Task:
+    def create(self, db: Session, org_id: uuid.UUID, creator_id: str, data: TaskCreate) -> Task:
         task = Task(
             org_id=org_id,
             creator_id=creator_id,
@@ -26,7 +26,7 @@ class TaskService:
     def get(self, db: Session, task_id: uuid.UUID, org_id: uuid.UUID) -> Optional[Task]:
         return db.query(Task).filter(Task.id == task_id, Task.org_id == org_id).first()
 
-    def list(self, db: Session, org_id: uuid.UUID, assignee_id: Optional[uuid.UUID] = None) -> list[Task]:
+    def list(self, db: Session, org_id: uuid.UUID, assignee_id: Optional[str] = None) -> list[Task]:
         q = db.query(Task).filter(Task.org_id == org_id)
         if assignee_id:
             q = q.filter(Task.assignee_id == assignee_id)

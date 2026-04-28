@@ -41,8 +41,8 @@ class Agent(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    organization: Mapped[Organization] = relationship("Organization", back_populates="agents")
-    user: Mapped[Optional[User]] = relationship("User", back_populates="agent")
+    organization: Mapped[Organization] = relationship("Organization")
+    user: Mapped[Optional[User]] = relationship("User")
     schedule: Mapped[Optional[AgentSchedule]] = relationship("AgentSchedule", back_populates="agent", uselist=False)
 
     outgoing_relationships: Mapped[list[AgentRelationship]] = relationship(
