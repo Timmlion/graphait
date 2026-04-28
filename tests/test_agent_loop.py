@@ -68,6 +68,7 @@ def mock_response(content=None, tool_calls=None):
 @pytest.mark.asyncio
 async def test_loop_completes_on_text_response(db):
     from graphait.modules.agent.loop import AgentLoop
+    from graphait.models.task import Comment
     task = make_task(db)
     # The response object is NOT async — only client.post() is awaited.
     # Use MagicMock for the response so raise_for_status() stays synchronous.
@@ -81,6 +82,10 @@ async def test_loop_completes_on_text_response(db):
         await AgentLoop(make_agent(), make_org(), task, db).run()
     db.refresh(task)
     assert task.status.value == "done"
+    comments = db.query(Comment).filter(Comment.task_id == task.id).all()
+    assert len(comments) == 1
+    assert comments[0].is_system == False
+    assert "Tests are done!" in comments[0].content
 
 
 @pytest.mark.asyncio

@@ -107,7 +107,7 @@ class AgentLoop:
 
             if not tool_calls:
                 if msg.get("content"):
-                    self._system_comment(msg["content"])
+                    self._agent_comment(msg["content"])
                 self._set_status("done")
                 return
 
@@ -127,6 +127,11 @@ class AgentLoop:
     def _system_comment(self, content: str) -> None:
         self.db.add(Comment(task_id=self.task.id, author_id=self._agent_db_id(),
                             content=content, is_system=True))
+        self.db.commit()
+
+    def _agent_comment(self, content: str) -> None:
+        self.db.add(Comment(task_id=self.task.id, author_id=self._agent_db_id(),
+                            content=content, is_system=False))
         self.db.commit()
 
     def _set_status(self, status: str) -> None:
