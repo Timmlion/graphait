@@ -109,11 +109,12 @@ class AgentLoop:
                          working_dir=self.agent.working_dir,
                          search_api_key=self.org.search_api_key,
                          scheduler_trigger=self.scheduler_trigger)
+        task_msg = self._task_message()
         messages: list[dict] = [
             {"role": "system", "content": self._system_prompt()},
-            {"role": "user", "content": self._task_message()},
+            {"role": "user", "content": task_msg},
         ]
-        _log(RunEventRole.user, self._task_message())
+        _log(RunEventRole.user, task_msg)
 
         for iteration in range(MAX_ITERATIONS):
             try:
