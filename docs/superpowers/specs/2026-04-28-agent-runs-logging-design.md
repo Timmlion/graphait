@@ -62,8 +62,8 @@ Import `AgentRun` and `RunEvent` so `Base.metadata` includes them on `create_all
 - On start: create `AgentRun(agent_id, task_id, status=running)`, store `self._run_id`
 - After each `_call_api`: log `role=assistant` event with `msg["content"]` or a summary of tool calls
 - After each tool call: log `role=tool_call` + `role=tool_result` pair
-- Log initial system prompt as `role=system` event (truncated to 2000 chars if needed)
-- Log initial user task message as `role=user` event
+- Log initial user task message as `role=user` event (task title + description + recent comments)
+- Do NOT log the system prompt — it's long and rarely useful in the activity view
 - On finish (`done` / `blocked` / `error` / `limit_reached`): set `AgentRun.finished_at = now()` and `status`
 
 ### `graphait/api/v1/runs.py` (new)
@@ -115,7 +115,7 @@ class RunEventRead(BaseModel):
 
 `AgentRun`, `RunEvent` interfaces. `runsApi.list()` and `runsApi.events(runId)`.
 
-### `frontend/src/pages/RunsPage.tsx` (new)
+### `frontend/src/pages/ActivityPage.tsx` (new)
 
 **Layout:** two-panel — run list on left (300px), event log on right.
 
@@ -127,8 +127,7 @@ class RunEventRead(BaseModel):
 **Event log panel:**
 - Chronological list of `RunEvent` rows
 - Color-coded by role:
-  - `system` → grey background
-  - `user` → blue-grey
+  - `user` → blue-grey (task context sent to agent)
   - `assistant` → blue
   - `tool_call` → amber, shows tool name as badge
   - `tool_result` → green
@@ -142,11 +141,11 @@ class RunEventRead(BaseModel):
 
 ### `frontend/src/App.tsx`
 
-Add route `/runs` wrapped in `RequireAuth`.
+Add route `/activity` wrapped in `RequireAuth`.
 
 ### `frontend/src/components/Layout.tsx`
 
-Add "Runs" nav link (icon: `terminal` or `activity`).
+Add "Activity" nav link (icon: `terminal` or `activity`).
 
 ---
 
@@ -172,6 +171,6 @@ Add "Runs" nav link (icon: `terminal` or `activity`).
 | `graphait/api/v1/runs.py` | New — GET /runs, GET /runs/{id}/events |
 | `graphait/api/v1/router.py` | Include runs router |
 | `frontend/src/api/runs.ts` | New — runsApi client |
-| `frontend/src/pages/RunsPage.tsx` | New — two-panel runs UI |
+| `frontend/src/pages/ActivityPage.tsx` | New — two-panel runs UI |
 | `frontend/src/App.tsx` | Add /runs route |
 | `frontend/src/components/Layout.tsx` | Add Runs nav link |
