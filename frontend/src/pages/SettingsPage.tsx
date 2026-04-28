@@ -10,6 +10,8 @@ export default function SettingsPage() {
   const [apiKey, setApiKey]           = useState('')
   const [model, setModel]             = useState('anthropic/claude-sonnet-4-5')
   const [customModel, setCustomModel] = useState('')
+  const [orgPrompt, setOrgPrompt]     = useState('')
+  const [searchApiKey, setSearchApiKey] = useState('')
   const [showKey, setShowKey]         = useState(false)
   const [saveState, setSaveState]     = useState<SaveState>('idle')
   const [loading, setLoading]         = useState(true)
@@ -24,6 +26,8 @@ export default function SettingsPage() {
         const key = s.openrouter_api_key ?? ''
         const mdl = s.default_model ?? 'anthropic/claude-sonnet-4-5'
         setApiKey(key)
+        setOrgPrompt(s.system_prompt ?? '')
+        setSearchApiKey(s.search_api_key ?? '')
         const known = OPENROUTER_MODELS.find(m => m.id === mdl && m.id !== '__custom__')
         if (!known && mdl) {
           setCustomModel(mdl)
@@ -48,6 +52,8 @@ export default function SettingsPage() {
       const updated = await orgApi.patchSettings({
         openrouter_api_key: apiKey,
         default_model: finalModel,
+        system_prompt: orgPrompt,
+        search_api_key: searchApiKey,
       })
       setOrgSettings(updated)
       // Mirror to localStorage so connector config picker has a local fallback
@@ -163,6 +169,43 @@ export default function SettingsPage() {
                   Key configured
                 </span>
               )}
+            </div>
+          </div>
+        </section>
+
+        <section className="settings__section">
+          <div className="settings__section-head">
+            <Icon name="spark" size={14} />
+            <span className="settings__section-title">Organization Context</span>
+          </div>
+          <div className="settings__fields">
+            <div className="field">
+              <label className="label" htmlFor="org-prompt">Org system prompt</label>
+              <textarea
+                id="org-prompt"
+                className="agent-cfg__prompt"
+                rows={5}
+                value={orgPrompt}
+                onChange={e => setOrgPrompt(e.target.value)}
+                placeholder="Instructions injected into every agent's context…"
+              />
+              <p className="settings__hint">Injected at the top of every agent's system prompt.</p>
+            </div>
+            <div className="field">
+              <label className="label" htmlFor="search-key">Search API Key (Serper)</label>
+              <input
+                id="search-key"
+                className="input"
+                type="password"
+                placeholder="serper.dev API key"
+                value={searchApiKey}
+                onChange={e => setSearchApiKey(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <p className="settings__hint">
+                Required for web_search tool. Get at <span className="mono" style={{color:'var(--accent)'}}>serper.dev</span>
+              </p>
             </div>
           </div>
         </section>
