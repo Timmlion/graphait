@@ -14,6 +14,7 @@ export default function SkillsPage() {
   const [showNew, setShowNew] = useState(false)
   const [newName, setNewName] = useState('')
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     skillsApi.list().then(s => { setSkills(s); setLoading(false) }).catch(() => setLoading(false))
@@ -40,17 +41,27 @@ export default function SkillsPage() {
   const createSkill = async () => {
     const id = slugify(newName)
     if (!id) return
-    const skill = await skillsApi.create({ id, name: newName, content: '' })
-    setSkills(prev => [...prev, skill])
-    selectSkill(skill)
-    setShowNew(false)
-    setNewName('')
+    setError(null)
+    try {
+      const skill = await skillsApi.create({ id, name: newName, content: '' })
+      setSkills(prev => [...prev, skill])
+      selectSkill(skill)
+      setShowNew(false)
+      setNewName('')
+    } catch {
+      setError('Failed to create skill.')
+    }
   }
 
   const deleteSkill = async (id: string) => {
-    await skillsApi.delete(id)
-    setSkills(prev => prev.filter(s => s.id !== id))
-    if (selected?.id === id) { setSelected(null); setDraft('') }
+    setError(null)
+    try {
+      await skillsApi.delete(id)
+      setSkills(prev => prev.filter(s => s.id !== id))
+      if (selected?.id === id) { setSelected(null); setDraft('') }
+    } catch {
+      setError('Failed to delete skill.')
+    }
   }
 
   if (loading) return <div className="settings"><div style={{color:'var(--ink-3)'}}>Loading…</div></div>
@@ -75,6 +86,11 @@ export default function SkillsPage() {
               <button className="btn btn--primary btn--sm" onClick={createSkill}>Create</button>
               <button className="btn btn--sm" onClick={() => { setShowNew(false); setNewName('') }}>Cancel</button>
             </div>
+          </div>
+        )}
+        {error && (
+          <div style={{ padding: '0 16px 8px', fontSize: 'var(--fs-xs)', color: 'var(--danger, #c0392b)' }}>
+            {error}
           </div>
         )}
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>

@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, type FormEvent } from 'react'
 import { agentsApi, type Agent } from '../api/agents'
 import { graphApi, type GraphEdge } from '../api/graph'
 import { skillsApi, type SkillRead } from '../api/skills'
-import { useAuth } from '../context/AuthContext'
 import Icon from '../components/Icon'
 
 /* ─── Layout helpers ─── */
@@ -463,11 +462,11 @@ function CreateAgentModal({ onClose, onCreate }: {
 
 /* ─── Main page ─── */
 export default function GraphPage() {
-  const { user } = useAuth()
   const [agents, setAgents] = useState<Agent[]>([])
   const [edges, setEdges] = useState<GraphEdge[]>([])
   const [skills, setSkills] = useState<SkillRead[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'ai' | 'human'>('all')
@@ -481,7 +480,7 @@ export default function GraphPage() {
         setEdges(data.edges)
         setSkills(skillList)
       })
-      .catch(() => {})
+      .catch(() => { setError('Failed to load graph. Please refresh.') })
       .finally(() => setLoading(false))
   }, [])
 
@@ -527,7 +526,7 @@ export default function GraphPage() {
     <div style={{ display:'flex', flexDirection:'column', height:'100vh', minHeight:0 }}>
       <header className="topbar">
         <div className="topbar__title">Agents</div>
-        <span className="topbar__crumb mono">{(user as any)?.org_slug || 'workspace'}.graphait / agents</span>
+        <span className="topbar__crumb mono">graphait / agents</span>
         <div className="topbar__right">
           <div className="viewtoggle">
             <button className={`viewtoggle__btn${view === 'graph' ? ' viewtoggle__btn--active' : ''}`} onClick={() => setView('graph')}><Icon name="graph" size={13}/>Graph</button>
@@ -573,11 +572,17 @@ export default function GraphPage() {
         </aside>
 
         {/* Canvas */}
-        <section className="agents__canvas">
+        <section className="agents__canvas" style={{ position: 'relative' }}>
           {view === 'graph' ? (
             <AgentGraph agents={agents} edges={edges} selectedId={selectedId} onSelect={id => setSelectedId(i => i === id ? null : id)} />
           ) : (
             <AgentListView agents={filtered} selectedId={selectedId} onSelect={id => setSelectedId(i => i === id ? null : id)} />
+          )}
+          {error && (
+            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+                          color: 'var(--ink-3)', fontSize: 'var(--fs-sm)' }}>
+              {error}
+            </div>
           )}
         </section>
 
