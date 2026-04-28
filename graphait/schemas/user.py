@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 from pydantic import BaseModel, EmailStr
 from graphait.models.user import UserRole
 
@@ -25,5 +26,6 @@ class UserRead(BaseModel):
     email: str
     role: UserRole
     org_id: uuid.UUID
+    agent_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
