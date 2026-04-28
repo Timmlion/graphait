@@ -70,3 +70,35 @@ def test_list_agents(cfg_dir):
                                reports_to=None, schedule_interval=300, schedule_enabled=True,
                                tools=[], skills=[], system_prompt=""))
     assert {a.id for a in load_agents()} == {"alpha", "beta"}
+
+
+def test_init_creates_context_dir(cfg_dir):
+    assert (cfg_dir / "context").is_dir()
+
+
+def test_save_and_load_context(cfg_dir):
+    from graphait.config.loader import load_context
+    (cfg_dir / "context" / "my-doc.md").write_text("# My Doc\nProject info.")
+    content = load_context("my-doc")
+    assert content is not None
+    assert "Project info." in content
+
+
+def test_load_missing_context_returns_none(cfg_dir):
+    from graphait.config.loader import load_context
+    assert load_context("nope") is None
+
+
+def test_agent_config_roundtrips_context_field(cfg_dir):
+    from graphait.config.loader import AgentConfig, save_agent, load_agent
+    cfg = AgentConfig(
+        id="ctx-dev", name="Ctx Dev", role_title="Developer",
+        type="ai", model="anthropic/claude-3-5-sonnet", api_key=None,
+        working_dir="./workspaces/ctx-dev", reports_to=None,
+        schedule_interval=300, schedule_enabled=True,
+        tools=[], skills=[], system_prompt="",
+        context=["project-overview", "backend-architecture"],
+    )
+    save_agent(cfg)
+    loaded = load_agent("ctx-dev")
+    assert loaded.context == ["project-overview", "backend-architecture"]

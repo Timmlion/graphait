@@ -21,6 +21,7 @@ class AgentConfig:
     schedule_enabled: bool
     tools: list[str] = field(default_factory=list)
     skills: list[str] = field(default_factory=list)
+    context: list[str] = field(default_factory=list)
     system_prompt: str = ""
 
 
@@ -41,9 +42,14 @@ def _skills_dir() -> Path:
     return CONFIG_DIR / "skills"
 
 
+def _context_dir() -> Path:
+    return CONFIG_DIR / "context"
+
+
 def init_config_dir() -> None:
     _agents_dir().mkdir(parents=True, exist_ok=True)
     _skills_dir().mkdir(parents=True, exist_ok=True)
+    _context_dir().mkdir(parents=True, exist_ok=True)
     org_file = CONFIG_DIR / "org.json"
     if not org_file.exists():
         org_file.write_text(json.dumps(asdict(OrgConfig()), indent=2))
@@ -115,3 +121,8 @@ def list_skills() -> list[dict]:
         {"id": p.stem, "name": p.stem.replace("-", " ").title(), "content": p.read_text()}
         for p in sorted(_skills_dir().glob("*.md"))
     ]
+
+
+def load_context(slug: str) -> Optional[str]:
+    p = _context_dir() / f"{slug}.md"
+    return p.read_text() if p.exists() else None
