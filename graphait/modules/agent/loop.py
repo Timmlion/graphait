@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 from sqlalchemy.orm import Session
 
-from graphait.config.loader import AgentConfig, OrgConfig, load_skill
+from graphait.config.loader import AgentConfig, OrgConfig, load_skill, load_context
 from graphait.models.task import Task, Comment, TaskStatus
 from graphait.modules.agent.tools import ToolContext, get_tool_schemas, execute_tool
 
@@ -31,12 +31,20 @@ class AgentLoop:
             parts.append(self.org.system_prompt)
         if self.agent.system_prompt:
             parts.append(self.agent.system_prompt)
+        if self.agent.working_dir:
+            parts.append(f"Your working directory: {self.agent.working_dir}")
         for slug in self.agent.skills:
             content = load_skill(slug)
             if content:
                 parts.append(f"## Skill: {slug.replace('-', ' ').title()}\n{content}")
             else:
                 logger.warning("Skill not found: %s (agent=%s)", slug, self.agent.id)
+        for slug in self.agent.context:
+            content = load_context(slug)
+            if content:
+                parts.append(f"## Context: {slug.replace('-', ' ').title()}\n{content}")
+            else:
+                logger.warning("Context doc not found: %s (agent=%s)", slug, self.agent.id)
         return "\n\n".join(parts)
 
     def _task_message(self) -> str:

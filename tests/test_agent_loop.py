@@ -120,3 +120,62 @@ async def test_loop_executes_tool_then_completes(db):
     events = db.query(RunEvent).filter(RunEvent.run_id == run.id).all()
     assert any(e.role == RunEventRole.tool_call for e in events)
     assert any(e.role == RunEventRole.tool_result for e in events)
+
+
+@pytest.mark.asyncio
+async def test_loop_injects_working_dir_in_system_prompt(db, tmp_path, monkeypatch):
+    import graphait.config.loader as loader_mod
+    monkeypatch.setattr(loader_mod, "CONFIG_DIR", tmp_path / "config")
+    loader_mod.init_config_dir()
+
+    from graphait.modules.agent.loop import AgentLoop
+    task = make_task(db)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = mock_response(content="Done.")
+
+    with patch("graphait.modules.agent.loop.httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        await AgentLoop(make_agent(), make_org(), task, db).run()
+
+    call_json = mock_http.post.call_args.kwargs["json"]
+    system_content = next(m["content"] for m in call_json["messages"] if m["role"] == "system")
+    assert "Your working directory: /tmp/test-dev-loop" in system_content
+
+
+@pytest.mark.asyncio
+async def test_loop_appends_context_docs_in_system_prompt(db, tmp_path, monkeypatch):
+    import graphait.config.loader as loader_mod
+    monkeypatch.setattr(loader_mod, "CONFIG_DIR", tmp_path / "config")
+    loader_mod.init_config_dir()
+    (tmp_path / "config" / "context" / "project-overview.md").write_text(
+        "# Project\nBuild great things."
+    )
+
+    from graphait.modules.agent.loop import AgentLoop
+    from graphait.config.loader import AgentConfig
+    agent = AgentConfig(
+        id=AGENT_ID, name="Test Dev", role_title="Developer",
+        type="ai", model="anthropic/claude-3-5-sonnet", api_key="sk-test",
+        working_dir="/tmp/test-dev-loop", reports_to=None,
+        schedule_interval=300, schedule_enabled=True,
+        tools=["read_file"], skills=[], system_prompt="You are a dev.",
+        context=["project-overview"],
+    )
+    task = make_task(db)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = mock_response(content="Done.")
+
+    with patch("graphait.modules.agent.loop.httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        await AgentLoop(agent, make_org(), task, db).run()
+
+    call_json = mock_http.post.call_args.kwargs["json"]
+    system_content = next(m["content"] for m in call_json["messages"] if m["role"] == "system")
+    assert "## Context: Project Overview" in system_content
+    assert "Build great things." in system_content
