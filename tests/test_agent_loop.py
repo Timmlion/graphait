@@ -182,6 +182,44 @@ async def test_loop_appends_context_docs_in_system_prompt(db, tmp_path, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_loop_exits_on_request_approval(db):
+    """request_approval tool sets task to waiting_approval and closes run as blocked."""
+    from graphait.modules.agent.loop import AgentLoop
+    from graphait.models.task import TaskStatus, Comment
+    from graphait.models.run import AgentRun, RunStatus
+
+    task = make_task(db)
+    tool_call = {
+        "id": "call_1", "type": "function",
+        "function": {
+            "name": "request_approval",
+            "arguments": json.dumps({"reason": "About to drop the database. Please confirm."})
+        }
+    }
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = mock_response(tool_calls=[tool_call])
+
+    with patch("graphait.modules.agent.loop.httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        await AgentLoop(make_agent(), make_org(), task, db).run()
+
+    db.refresh(task)
+    assert task.status == TaskStatus.waiting_approval
+
+    run = db.query(AgentRun).first()
+    assert run.status == RunStatus.blocked
+
+    comments = db.query(Comment).filter(Comment.task_id == task.id, Comment.is_system == True).all()
+    assert any("drop the database" in c.content for c in comments)
+    # API called exactly once (one iteration before exiting)
+    assert mock_http.post.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_run_skips_if_task_already_locked(db):
     """AgentLoop.run() exits immediately if another run is already active for this task."""
     from graphait.modules.agent.loop import AgentLoop

@@ -43,6 +43,7 @@ export default function InboxPage() {
   const [loading, setLoading]   = useState(true)
   const [selected, setSelected] = useState<string>('__all__')
   const [statusFilter, setStatusFilter] = useState<'active' | 'all'>('active')
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([tasksApi.list(), agentsApi.list()])
@@ -53,6 +54,28 @@ export default function InboxPage() {
 
   const humanAgents = agents.filter(a => a.type === 'human')
   const agentMap    = new Map(agents.map(a => [a.id, a]))
+
+  async function handleApprove(taskId: string) {
+    setActionLoading(taskId)
+    try {
+      const updated = await tasksApi.approve(taskId)
+      setTasks(prev => prev.map(t => t.id === taskId ? updated : t))
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleReject(taskId: string) {
+    setActionLoading(taskId)
+    try {
+      const updated = await tasksApi.reject(taskId)
+      setTasks(prev => prev.map(t => t.id === taskId ? updated : t))
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const pendingApprovals = tasks.filter(t => t.status === 'waiting_approval')
 
   const visibleTasks = tasks
     .filter(t => {
@@ -122,6 +145,50 @@ export default function InboxPage() {
         </aside>
 
         <main className="inbox__main">
+          {pendingApprovals.length > 0 && (
+            <section className="inbox__approvals">
+              <div className="inbox__section-label eyebrow" style={{padding: '0 0 8px 0'}}>Awaiting Approval</div>
+              <div className="inbox__list">
+                {pendingApprovals.map(t => {
+                  const assignee = t.assignee_id ? agentMap.get(t.assignee_id) : null
+                  const isLoading = actionLoading === t.id
+                  return (
+                    <article key={t.id} className="inbox__item inbox__item--approval">
+                      <div className="inbox__item-left">
+                        <span className="inbox__num mono">#{t.number}</span>
+                        <span className="inbox__dot" style={{ background: STATUS_DOT['waiting_approval'] }} />
+                      </div>
+                      <div className="inbox__item-body">
+                        <div className="inbox__item-title">{t.title}</div>
+                        <div className="inbox__item-meta">
+                          {assignee && (
+                            <span className="agent-chip">
+                              <span className="avatar avatar--sm" style={{background:'var(--accent)',color:'var(--accent-ink)'}}>{assignee.name.slice(0,1).toUpperCase()}</span>
+                              <span className="agent-chip__name">{assignee.name}</span>
+                            </span>
+                          )}
+                          <span className="mono" style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}}>{timeAgo(t.updated_at)}</span>
+                        </div>
+                      </div>
+                      <div className="inbox__item-right" style={{gap:6, display:'flex'}}>
+                        <button
+                          className="btn btn--sm btn--ghost"
+                          onClick={() => handleReject(t.id)}
+                          disabled={isLoading}
+                          style={{color:'var(--st-rejected)'}}
+                        >Reject</button>
+                        <button
+                          className="btn btn--sm btn--accent"
+                          onClick={() => handleApprove(t.id)}
+                          disabled={isLoading}
+                        >{isLoading ? '…' : 'Approve'}</button>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            </section>
+          )}
           {loading ? (
             <div className="inbox__empty">Loading…</div>
           ) : visibleTasks.length === 0 ? (

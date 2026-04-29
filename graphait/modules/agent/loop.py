@@ -170,6 +170,9 @@ class AgentLoop:
                                      else RunStatus.done)
                     _close(finish_status)
                     return
+                if fn["name"] == "request_approval":
+                    _close(RunStatus.blocked)
+                    return
 
         self._system_comment("Reached iteration limit without completing task.")
         _close(RunStatus.limit_reached)

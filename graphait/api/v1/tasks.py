@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from graphait.database import get_db
 from graphait.api.deps import get_current_user
 from graphait.models.user import User
+from graphait.models.task import Task, Comment, TaskStatus
 from graphait.modules.tasks.service import task_service
 from graphait.schemas.task import TaskCreate, TaskUpdate, TaskRead
 from graphait.modules.tasks.comment_service import comment_service
@@ -91,3 +92,33 @@ def add_comment(task_id: uuid.UUID, body: CommentCreate, db: Session = Depends(g
     _get_task_or_404(task_id, current_user, db)
     author_id = _get_creator_id(current_user)
     return comment_service.create(db, task_id, author_id, body)
+
+
+@router.post("/{task_id}/approve", response_model=TaskRead)
+def approve_task(task_id: uuid.UUID, db: Session = Depends(get_db),
+                 current_user: User = Depends(get_current_user)):
+    task = _get_task_or_404(task_id, current_user, db)
+    if task.status != TaskStatus.waiting_approval:
+        raise HTTPException(status_code=400, detail="Task is not waiting for approval")
+    task.status = TaskStatus.in_progress
+    db.add(Comment(task_id=task.id, author_id=str(current_user.id),
+                   content="Approved.", is_system=True))
+    db.commit()
+    db.refresh(task)
+    if task.assignee_id:
+        _trigger(task.assignee_id)
+    return task
+
+
+@router.post("/{task_id}/reject", response_model=TaskRead)
+def reject_task(task_id: uuid.UUID, db: Session = Depends(get_db),
+                current_user: User = Depends(get_current_user)):
+    task = _get_task_or_404(task_id, current_user, db)
+    if task.status != TaskStatus.waiting_approval:
+        raise HTTPException(status_code=400, detail="Task is not waiting for approval")
+    task.status = TaskStatus.rejected
+    db.add(Comment(task_id=task.id, author_id=str(current_user.id),
+                   content="Rejected.", is_system=True))
+    db.commit()
+    db.refresh(task)
+    return task

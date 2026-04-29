@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 from sqlalchemy.orm import Session
 
-ALWAYS_ON_TOOLS = ["post_comment", "update_status", "create_task", "assign_task"]
+ALWAYS_ON_TOOLS = ["post_comment", "update_status", "create_task", "assign_task", "request_approval"]
 
 TOOL_SCHEMAS: dict[str, dict] = {
     "post_comment": {"type": "function", "function": {
@@ -42,6 +42,13 @@ TOOL_SCHEMAS: dict[str, dict] = {
                            "task_id": {"type": "string"},
                            "assignee_id": {"type": "string"}},
                        "required": ["task_id", "assignee_id"]}}},
+    "request_approval": {"type": "function", "function": {
+        "name": "request_approval",
+        "description": "Pause the task and request human approval. Use before dangerous or irreversible actions (e.g. deleting data, deploying to production). Provide a clear reason.",
+        "parameters": {"type": "object",
+                       "properties": {
+                           "reason": {"type": "string", "description": "What decision needs approval and why"}},
+                       "required": ["reason"]}}},
     "read_file": {"type": "function", "function": {
         "name": "read_file",
         "description": "Read a file from your working directory.",
@@ -213,9 +220,27 @@ def _fetch_url(args: dict, ctx: ToolContext) -> str:
     return resp.text[:8000]
 
 
+def _request_approval(args: dict, ctx: ToolContext) -> str:
+    import uuid
+    from graphait.models.task import Task, Comment, TaskStatus
+    task = ctx.db.query(Task).filter(Task.id == uuid.UUID(ctx.task_id)).first()
+    if not task:
+        return "Error: task not found"
+    task.status = TaskStatus.waiting_approval
+    ctx.db.add(Comment(
+        task_id=task.id,
+        author_id=ctx.agent_id,
+        content=f"Approval requested: {args['reason']}",
+        is_system=True,
+    ))
+    ctx.db.commit()
+    return "APPROVAL_REQUESTED"
+
+
 _HANDLERS = {
     "post_comment": _post_comment, "update_status": _update_status,
     "create_task": _create_task, "assign_task": _assign_task,
+    "request_approval": _request_approval,
     "read_file": _read_file, "write_file": _write_file,
     "list_directory": _list_directory, "web_search": _web_search,
     "fetch_url": _fetch_url,

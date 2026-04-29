@@ -35,4 +35,6 @@ export const tasksApi = {
   listComments: (id: string) => apiFetch<Comment[]>(`/tasks/${id}/comments`),
   addComment: (id: string, content: string) =>
     apiFetch<Comment>(`/tasks/${id}/comments`, { method: 'POST', body: JSON.stringify({ content }) }),
+  approve: (id: string) => apiFetch<Task>(`/tasks/${id}/approve`, { method: 'POST' }),
+  reject: (id: string) => apiFetch<Task>(`/tasks/${id}/reject`, { method: 'POST' }),
 }
