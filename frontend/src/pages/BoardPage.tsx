@@ -351,6 +351,22 @@ function TaskDrawer({ task, agents, onClose, onUpdated }: {
             </div>
           </div>
 
+          {task.outcome && (
+            <div className="drawer__section">
+              <div className="eyebrow">Outcome</div>
+              <div style={{
+                padding: '10px 12px',
+                background: 'color-mix(in srgb, var(--st-done) 12%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--st-done) 30%, transparent)',
+                borderRadius: '6px',
+                fontSize: 'var(--fs-sm)',
+                lineHeight: '1.5',
+                color: 'var(--ink-1)',
+                whiteSpace: 'pre-wrap',
+              }}>{task.outcome}</div>
+            </div>
+          )}
+
           <div className="drawer__section">
             <div className="eyebrow">Description</div>
             <textarea

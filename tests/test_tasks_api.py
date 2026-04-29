@@ -61,3 +61,29 @@ def test_approve_non_waiting_task_returns_400(client, headers):
 
     resp = client.post(f"/api/v1/tasks/{task_id}/approve", headers=headers)
     assert resp.status_code == 400
+
+
+def test_outcome_returned_in_task_read(client, headers, db):
+    from graphait.models.task import Task
+    resp = client.post("/api/v1/tasks", json={"title": "Outcome task"}, headers=headers)
+    assert resp.status_code == 201
+    task_id = resp.json()["id"]
+
+    task = db.query(Task).filter(Task.id == uuid.UUID(task_id)).first()
+    task.outcome = "Feature complete."
+    db.commit()
+
+    resp = client.get(f"/api/v1/tasks/{task_id}", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["outcome"] == "Feature complete."
+
+
+def test_outcome_updatable_via_patch(client, headers, db):
+    from graphait.models.task import Task
+    resp = client.post("/api/v1/tasks", json={"title": "Patchable task"}, headers=headers)
+    assert resp.status_code == 201
+    task_id = resp.json()["id"]
+
+    resp = client.patch(f"/api/v1/tasks/{task_id}", json={"outcome": "Done and deployed."}, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["outcome"] == "Done and deployed."

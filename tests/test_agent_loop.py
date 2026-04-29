@@ -220,6 +220,39 @@ async def test_loop_exits_on_request_approval(db):
 
 
 @pytest.mark.asyncio
+async def test_update_status_saves_outcome(db):
+    """Agent can write an outcome summary when marking task done."""
+    from graphait.modules.agent.loop import AgentLoop
+    from graphait.models.task import TaskStatus
+
+    task = make_task(db)
+    tool_call = {
+        "id": "call_1", "type": "function",
+        "function": {
+            "name": "update_status",
+            "arguments": json.dumps({
+                "status": "done",
+                "outcome": "Implemented rate limiting middleware. All tests pass."
+            })
+        }
+    }
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = mock_response(tool_calls=[tool_call])
+
+    with patch("graphait.modules.agent.loop.httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        await AgentLoop(make_agent(), make_org(), task, db).run()
+
+    db.refresh(task)
+    assert task.status == TaskStatus.done
+    assert task.outcome == "Implemented rate limiting middleware. All tests pass."
+
+
+@pytest.mark.asyncio
 async def test_run_skips_if_task_already_locked(db):
     """AgentLoop.run() exits immediately if another run is already active for this task."""
     from graphait.modules.agent.loop import AgentLoop

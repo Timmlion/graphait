@@ -15,6 +15,7 @@ export interface Task {
   creator_id: string
   created_at: string
   updated_at: string
+  outcome: string | null
 }
 
 export interface Comment {

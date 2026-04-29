@@ -49,6 +49,7 @@ class Task(Base):
     parent_task_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    outcome: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     subtasks: Mapped[list[Task]] = relationship("Task", foreign_keys=[parent_task_id])
     comments: Mapped[list[Comment]] = relationship("Comment", back_populates="task", cascade="all, delete-orphan")

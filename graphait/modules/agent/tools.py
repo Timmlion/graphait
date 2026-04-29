@@ -16,12 +16,13 @@ TOOL_SCHEMAS: dict[str, dict] = {
                        "required": ["content"]}}},
     "update_status": {"type": "function", "function": {
         "name": "update_status",
-        "description": "Set task status. Use 'done' when complete, 'blocked' when stuck.",
+        "description": "Set task status. Use 'done' when complete, 'blocked' when stuck. When status is 'done', provide a concise outcome summary of what was accomplished.",
         "parameters": {"type": "object",
                        "properties": {
                            "status": {"type": "string",
                                       "enum": ["done", "blocked", "in_progress", "in_review", "cancelled"]},
-                           "comment": {"type": "string"}},
+                           "comment": {"type": "string"},
+                           "outcome": {"type": "string", "description": "Brief summary of what was accomplished. Required when status is 'done'."}},
                        "required": ["status"]}}},
     "create_task": {"type": "function", "function": {
         "name": "create_task",
@@ -132,6 +133,8 @@ def _update_status(args: dict, ctx: ToolContext) -> str:
     if not task:
         return "Error: task not found"
     task.status = args["status"]
+    if args.get("outcome"):
+        task.outcome = args["outcome"]
     if args.get("comment"):
         ctx.db.add(Comment(task_id=task.id, author_id=ctx.agent_id,
                            content=args["comment"], is_system=False))

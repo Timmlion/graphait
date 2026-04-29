@@ -20,6 +20,7 @@ class TaskUpdate(BaseModel):
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
     assignee_id: Optional[str] = None
+    outcome: Optional[str] = None
 
 
 class TaskRead(BaseModel):
@@ -36,5 +37,6 @@ class TaskRead(BaseModel):
     parent_task_id: Optional[uuid.UUID]
     created_at: datetime
     updated_at: datetime
+    outcome: Optional[str] = None
 
     model_config = {"from_attributes": True}
