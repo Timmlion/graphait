@@ -179,3 +179,33 @@ async def test_loop_appends_context_docs_in_system_prompt(db, tmp_path, monkeypa
     system_content = next(m["content"] for m in call_json["messages"] if m["role"] == "system")
     assert "## Context: Project Overview" in system_content
     assert "Build great things." in system_content
+
+
+@pytest.mark.asyncio
+async def test_run_skips_if_task_already_locked(db):
+    """AgentLoop.run() exits immediately if another run is already active for this task."""
+    from graphait.modules.agent.loop import AgentLoop
+    from graphait.models.run import AgentRun, RunStatus
+
+    task = make_task(db)
+
+    # Seed an active run for this task (simulates another agent already working on it)
+    existing_run = AgentRun(
+        agent_id="other-agent",
+        task_id=task.id,
+        status=RunStatus.running,
+    )
+    db.add(existing_run)
+    db.commit()
+
+    with patch("graphait.modules.agent.loop.httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_cls.return_value.__aenter__.return_value = mock_http
+        await AgentLoop(make_agent(), make_org(), task, db).run()
+
+    # API must not have been called
+    mock_http.post.assert_not_called()
+
+    # No new AgentRun should have been created
+    runs = db.query(AgentRun).all()
+    assert len(runs) == 1  # only the seeded one

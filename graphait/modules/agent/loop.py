@@ -93,6 +93,16 @@ class AgentLoop:
         from graphait.models.run import AgentRun, RunEvent, RunStatus, RunEventRole
         from datetime import datetime
 
+        # Guard: skip if another run is already active for this task
+        active = (self.db.query(AgentRun)
+                  .filter(AgentRun.task_id == self.task.id,
+                          AgentRun.status == RunStatus.running)
+                  .first())
+        if active:
+            logger.warning("Task %s already locked by run %s (agent=%s) — skipping",
+                           self.task.id, active.id, active.agent_id)
+            return
+
         run = AgentRun(
             agent_id=self.agent.id,
             task_id=self.task.id,
