@@ -351,3 +351,120 @@ async def test_agent_can_create_subtask(db):
     assert subtask is not None
     assert subtask.title == "Write unit tests"
     assert subtask.parent_task_id == task.id
+
+
+@pytest.mark.asyncio
+async def test_loop_injects_hierarchy_when_reports_to_set(db, tmp_path, monkeypatch):
+    """Agent with reports_to sees their manager in the system prompt."""
+    import graphait.config.loader as loader_mod
+    monkeypatch.setattr(loader_mod, "CONFIG_DIR", tmp_path / "config")
+    loader_mod.init_config_dir()
+
+    from graphait.config.loader import AgentConfig, save_agent
+    # Create manager agent in config
+    manager = AgentConfig(
+        id="tech-lead", name="Tech Lead", role_title="Engineering Manager",
+        type="human", model="", api_key=None,
+        working_dir="", reports_to=None,
+        schedule_interval=0, schedule_enabled=False,
+        tools=[], skills=[], system_prompt="",
+    )
+    save_agent(manager)
+
+    from graphait.modules.agent.loop import AgentLoop
+    agent = AgentConfig(
+        id=AGENT_ID, name="Test Dev", role_title="Developer",
+        type="ai", model="anthropic/claude-3-5-sonnet", api_key="sk-test",
+        working_dir="/tmp/test-dev-loop", reports_to="tech-lead",
+        schedule_interval=300, schedule_enabled=True,
+        tools=[], skills=[], system_prompt="You are a dev.",
+    )
+    task = make_task(db)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = mock_response(content="Done.")
+
+    with patch("graphait.modules.agent.loop.httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        await AgentLoop(agent, make_org(), task, db).run()
+
+    call_json = mock_http.post.call_args.kwargs["json"]
+    system_content = next(m["content"] for m in call_json["messages"] if m["role"] == "system")
+    assert "## Your position in the org" in system_content
+    assert "Tech Lead" in system_content
+    assert "tech-lead" in system_content
+    assert "escalate" in system_content
+
+
+@pytest.mark.asyncio
+async def test_loop_injects_direct_reports(db, tmp_path, monkeypatch):
+    """Manager agent sees their direct reports in the system prompt."""
+    import graphait.config.loader as loader_mod
+    monkeypatch.setattr(loader_mod, "CONFIG_DIR", tmp_path / "config")
+    loader_mod.init_config_dir()
+
+    from graphait.config.loader import AgentConfig, save_agent
+    # Create two worker agents that report to our agent
+    for worker_id, worker_name in [("backend-dev", "Backend Dev"), ("frontend-dev", "Frontend Dev")]:
+        save_agent(AgentConfig(
+            id=worker_id, name=worker_name, role_title="Developer",
+            type="ai", model="anthropic/claude-3-5-sonnet", api_key=None,
+            working_dir="", reports_to=AGENT_ID,
+            schedule_interval=300, schedule_enabled=True,
+            tools=[], skills=[], system_prompt="",
+        ))
+
+    from graphait.modules.agent.loop import AgentLoop
+    # Our agent is a manager — no reports_to, has direct reports
+    manager_agent = AgentConfig(
+        id=AGENT_ID, name="Test Dev", role_title="Tech Lead",
+        type="ai", model="anthropic/claude-3-5-sonnet", api_key="sk-test",
+        working_dir="/tmp/test-dev-loop", reports_to=None,
+        schedule_interval=300, schedule_enabled=True,
+        tools=[], skills=[], system_prompt="You are a tech lead.",
+    )
+    task = make_task(db)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = mock_response(content="Done.")
+
+    with patch("graphait.modules.agent.loop.httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        await AgentLoop(manager_agent, make_org(), task, db).run()
+
+    call_json = mock_http.post.call_args.kwargs["json"]
+    system_content = next(m["content"] for m in call_json["messages"] if m["role"] == "system")
+    assert "## Your position in the org" in system_content
+    assert "Backend Dev" in system_content
+    assert "backend-dev" in system_content
+    assert "Frontend Dev" in system_content
+    assert "delegate" in system_content
+
+
+@pytest.mark.asyncio
+async def test_loop_no_hierarchy_block_when_isolated(db, tmp_path, monkeypatch):
+    """Agent with no relationships gets no hierarchy block."""
+    import graphait.config.loader as loader_mod
+    monkeypatch.setattr(loader_mod, "CONFIG_DIR", tmp_path / "config")
+    loader_mod.init_config_dir()
+    # No other agents saved — this agent is alone in the org
+
+    from graphait.modules.agent.loop import AgentLoop
+    task = make_task(db)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = mock_response(content="Done.")
+
+    with patch("graphait.modules.agent.loop.httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        await AgentLoop(make_agent(), make_org(), task, db).run()
+
+    call_json = mock_http.post.call_args.kwargs["json"]
+    system_content = next(m["content"] for m in call_json["messages"] if m["role"] == "system")
+    assert "## Your position in the org" not in system_content

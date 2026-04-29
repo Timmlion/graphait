@@ -35,6 +35,9 @@ class AgentLoop:
             parts.append(f"Your working directory: {self.agent.working_dir}")
         if self.org.project_dir:
             parts.append(f"Project directory (shared repo root): {self.org.project_dir}")
+        hierarchy = self._hierarchy_block()
+        if hierarchy:
+            parts.append(hierarchy)
         for slug in self.agent.skills:
             content = load_skill(slug)
             if content:
@@ -48,6 +51,31 @@ class AgentLoop:
             else:
                 logger.warning("Context doc not found: %s (agent=%s)", slug, self.agent.id)
         return "\n\n".join(parts)
+
+    def _hierarchy_block(self) -> str:
+        from graphait.config.loader import load_agents
+        all_agents = load_agents()
+        agent_map = {a.id: a for a in all_agents}
+
+        lines = []
+
+        if self.agent.reports_to:
+            superior = agent_map.get(self.agent.reports_to)
+            if superior:
+                lines.append(
+                    f"You report to: {superior.name} (id: {superior.id}, role: {superior.role_title})"
+                    f" — escalate approvals and blockers there."
+                )
+
+        direct_reports = [a for a in all_agents if a.reports_to == self.agent.id]
+        if direct_reports:
+            lines.append("Your direct reports (delegate work to them using create_task or assign_task):")
+            for r in direct_reports:
+                lines.append(f"  - {r.name} (id: {r.id}, role: {r.role_title})")
+
+        if not lines:
+            return ""
+        return "## Your position in the org\n" + "\n".join(lines)
 
     def _task_message(self) -> str:
         comments = (self.db.query(Comment)
