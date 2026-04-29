@@ -3,6 +3,7 @@ import { agentsApi, type Agent } from '../api/agents'
 import { graphApi, type GraphEdge } from '../api/graph'
 import { skillsApi, type SkillRead } from '../api/skills'
 import Icon from '../components/Icon'
+import { AGENT_TEMPLATES, SENIORITY_LABEL, type AgentTemplate, type Seniority } from '../data/agentTemplates'
 
 /* ─── Layout helpers ─── */
 function computeLayout(agents: Agent[], edges: GraphEdge[]) {
@@ -187,20 +188,37 @@ const AVAILABLE_TOOLS = [
   'read_file', 'write_file', 'list_directory', 'web_search', 'fetch_url'
 ]
 
-function AgentConfig({ agent, agents, skills, onUpdate, onDelete, onClose }: {
+function AgentConfig({ agent, agents, skills, onUpdate, onSave, onDelete, onClose }: {
   agent: Agent; agents: Agent[]; skills: SkillRead[]
   onUpdate: (patch: Partial<Agent>) => void
+  onSave: (agent: Agent) => Promise<void>
   onDelete: () => void; onClose: () => void
 }) {
   const [tab, setTab] = useState<'general' | 'model' | 'tools' | 'skills' | 'schedule'>('general')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [running, setRunning] = useState(false)
   const [runResult, setRunResult] = useState<'ok' | 'err' | null>(null)
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
 
-  useEffect(() => { setConfirmDelete(false); setRunResult(null) }, [agent.id])
+  useEffect(() => { setConfirmDelete(false); setRunResult(null); setDirty(false); setSavedAt(null) }, [agent.id])
 
   const isAI = agent.type === 'ai'
-  const save = (patch: Partial<Agent>) => onUpdate(patch)
+
+  const update = (patch: Partial<Agent>) => { onUpdate(patch); setDirty(true) }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await onSave(agent)
+      setDirty(false)
+      setSavedAt(Date.now())
+      setTimeout(() => setSavedAt(null), 2000)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const runNow = async () => {
     setRunning(true)
@@ -218,11 +236,9 @@ function AgentConfig({ agent, agents, skills, onUpdate, onDelete, onClose }: {
           <div className={`avatar${isAI ? ' avatar--ai' : ' avatar--human'} avatar--xl`}>{initials(agent.name)}</div>
           <div className="agent-cfg__id-text">
             <input className="agent-cfg__name" value={agent.name}
-              onChange={e => onUpdate({ name: e.target.value })}
-              onBlur={e => save({ name: e.target.value })} />
+              onChange={e => update({ name: e.target.value })} />
             <input className="agent-cfg__role" value={agent.role_title}
-              onChange={e => onUpdate({ role_title: e.target.value })}
-              onBlur={e => save({ role_title: e.target.value })} />
+              onChange={e => update({ role_title: e.target.value })} />
             <span className={`tag-type tag-type--${agent.type}`}>{agent.type}</span>
           </div>
           <button className="btn btn--ghost btn--icon btn--sm agent-cfg__close" onClick={onClose}>
@@ -250,15 +266,14 @@ function AgentConfig({ agent, agents, skills, onUpdate, onDelete, onClose }: {
               <label className="label">System prompt</label>
               <textarea className="agent-cfg__prompt" rows={10}
                 value={agent.system_prompt}
-                onChange={e => onUpdate({ system_prompt: e.target.value })}
-                onBlur={e => save({ system_prompt: e.target.value })}
+                onChange={e => update({ system_prompt: e.target.value })}
                 placeholder="Describe this agent's role, personality, constraints…"/>
             </div>
             <div className="field">
               <label className="label">Reports to</label>
               <select className="select"
                 value={agent.reports_to ?? ''}
-                onChange={e => save({ reports_to: e.target.value || null })}>
+                onChange={e => update({ reports_to: e.target.value || null })}>
                 <option value="">— None (top-level)</option>
                 {agents.filter(a => a.id !== agent.id).map(a => (
                   <option key={a.id} value={a.id}>{a.name}</option>
@@ -273,8 +288,7 @@ function AgentConfig({ agent, agents, skills, onUpdate, onDelete, onClose }: {
             <div className="field">
               <label className="label">Model</label>
               <input className="input mono" value={agent.model}
-                onChange={e => onUpdate({ model: e.target.value })}
-                onBlur={e => save({ model: e.target.value })}
+                onChange={e => update({ model: e.target.value })}
                 placeholder="anthropic/claude-sonnet-4-5"/>
               <p className="settings__hint">OpenRouter model ID. Leave blank to use org default.</p>
             </div>
@@ -282,15 +296,13 @@ function AgentConfig({ agent, agents, skills, onUpdate, onDelete, onClose }: {
               <label className="label">API Key (optional)</label>
               <input className="input" type="password"
                 value={agent.api_key ?? ''}
-                onChange={e => onUpdate({ api_key: e.target.value || null })}
-                onBlur={e => save({ api_key: e.target.value || null })}
+                onChange={e => update({ api_key: e.target.value || null })}
                 placeholder="Overrides org key if set" autoComplete="off"/>
             </div>
             <div className="field">
               <label className="label">Working directory</label>
               <input className="input mono" value={agent.working_dir}
-                onChange={e => onUpdate({ working_dir: e.target.value })}
-                onBlur={e => save({ working_dir: e.target.value })}
+                onChange={e => update({ working_dir: e.target.value })}
                 placeholder="./workspaces/agent-id"/>
             </div>
           </>
@@ -309,7 +321,7 @@ function AgentConfig({ agent, agents, skills, onUpdate, onDelete, onClose }: {
                       const tools = e.target.checked
                         ? [...agent.tools, tool]
                         : agent.tools.filter(t => t !== tool)
-                      save({ tools })
+                      update({ tools })
                     }}/>
                   <span className="mono" style={{ fontSize: 'var(--fs-sm)' }}>{tool}</span>
                 </label>
@@ -333,7 +345,7 @@ function AgentConfig({ agent, agents, skills, onUpdate, onDelete, onClose }: {
                           const updated = e.target.checked
                             ? [...agent.skills, skill.id]
                             : agent.skills.filter(s => s !== skill.id)
-                          save({ skills: updated })
+                          update({ skills: updated })
                         }}/>
                       <span>{skill.name}</span>
                     </label>
@@ -348,14 +360,13 @@ function AgentConfig({ agent, agents, skills, onUpdate, onDelete, onClose }: {
             <div className="field">
               <label className="label">Schedule enabled</label>
               <span className="toggle" data-on={agent.schedule_enabled ? 'true' : 'false'}
-                onClick={() => save({ schedule_enabled: !agent.schedule_enabled })}/>
+                onClick={() => update({ schedule_enabled: !agent.schedule_enabled })}/>
             </div>
             <div className="field">
               <label className="label">Interval (seconds)</label>
               <input type="number" min={30} className="input"
                 value={agent.schedule_interval}
-                onChange={e => onUpdate({ schedule_interval: Number(e.target.value) })}
-                onBlur={e => save({ schedule_interval: Number(e.target.value) })}/>
+                onChange={e => update({ schedule_interval: Number(e.target.value) })}/>
               <p className="settings__hint">How often the agent checks for pending tasks.</p>
             </div>
           </>
@@ -363,12 +374,18 @@ function AgentConfig({ agent, agents, skills, onUpdate, onDelete, onClose }: {
       </div>
 
       <footer className="agent-cfg__foot">
-        {isAI && (
-          <button className="btn btn--primary btn--sm" onClick={runNow} disabled={running}>
-            <Icon name={running ? 'pause' : 'play'} size={12}/>
-            {running ? 'Running…' : runResult === 'ok' ? 'Triggered ✓' : runResult === 'err' ? 'Error ✗' : 'Run now'}
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          <button className="btn btn--primary btn--sm" onClick={handleSave} disabled={!dirty || saving}>
+            <Icon name="check" size={12}/>
+            {saving ? 'Saving…' : savedAt ? 'Saved ✓' : 'Save'}
           </button>
-        )}
+          {isAI && (
+            <button className="btn btn--sm" onClick={runNow} disabled={running || dirty}>
+              <Icon name={running ? 'pause' : 'play'} size={12}/>
+              {running ? 'Running…' : runResult === 'ok' ? 'Triggered ✓' : runResult === 'err' ? 'Error ✗' : 'Run now'}
+            </button>
+          )}
+        </div>
         {confirmDelete ? (
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             <span style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}}>Delete?</span>
@@ -386,15 +403,55 @@ function AgentConfig({ agent, agents, skills, onUpdate, onDelete, onClose }: {
 }
 
 /* ─── Create agent modal ─── */
+const SENIORITY_COLOR: Record<Seniority, string> = {
+  executive: 'var(--accent)',
+  senior: 'var(--ink-1)',
+  junior: 'var(--ink-3)',
+}
+
+const TIERS: { key: Seniority; label: string }[] = [
+  { key: 'executive', label: 'Executive' },
+  { key: 'senior',    label: 'Senior' },
+  { key: 'junior',    label: 'Junior' },
+]
+
+type CreateForm = {
+  id: string; name: string; role_title: string
+  type: 'ai' | 'human'; working_dir: string
+  model: string; system_prompt: string
+}
+
 function CreateAgentModal({ onClose, onCreate }: {
   onClose: () => void
-  onCreate: (data: { id: string; name: string; role_title: string; type: 'ai' | 'human'; working_dir: string }) => void
+  onCreate: (data: CreateForm) => void
 }) {
-  const [form, setForm] = useState({ id: '', name: '', role_title: '', type: 'ai' as 'ai' | 'human', working_dir: '' })
-  const set = (k: string, v: string) => {
+  const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null)
+  const [form, setForm] = useState<CreateForm>({
+    id: '', name: '', role_title: '', type: 'ai', working_dir: '', model: '', system_prompt: ''
+  })
+
+  const applyTemplate = (tpl: AgentTemplate) => {
+    setSelectedTemplate(tpl)
+    setForm({
+      id: tpl.id,
+      name: tpl.name,
+      role_title: tpl.role_title,
+      type: 'ai',
+      working_dir: `./workspaces/${tpl.id}`,
+      model: tpl.model,
+      system_prompt: tpl.system_prompt,
+    })
+  }
+
+  const clearTemplate = () => {
+    setSelectedTemplate(null)
+    setForm({ id: '', name: '', role_title: '', type: 'ai', working_dir: '', model: '', system_prompt: '' })
+  }
+
+  const set = (k: keyof CreateForm, v: string) => {
     setForm(f => {
       const next = { ...f, [k]: v }
-      if (k === 'id') next.working_dir = v ? `./workspaces/${v}` : ''
+      if (k === 'id' && !selectedTemplate) next.working_dir = v ? `./workspaces/${v}` : ''
       return next
     })
   }
@@ -403,32 +460,77 @@ function CreateAgentModal({ onClose, onCreate }: {
     e.preventDefault()
     if (!form.id.trim() || !form.name.trim() || !form.role_title.trim()) return
     onCreate({
+      ...form,
       id: form.id.trim(),
       name: form.name.trim(),
       role_title: form.role_title.trim(),
-      type: form.type,
       working_dir: form.working_dir.trim() || `./workspaces/${form.id.trim()}`,
     })
   }
 
   return (
     <div className="modal" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal__panel">
+      <div className="modal__panel" style={{ maxWidth: 640 }}>
         <header className="modal__head">
           <div className="eyebrow">New agent</div>
           <h2>Add agent to organization</h2>
           <button className="btn btn--ghost btn--icon btn--sm modal__close" onClick={onClose}><Icon name="close" size={14}/></button>
         </header>
-        <form onSubmit={submit} className="modal__body">
-          <div className="typepicker">
-            {(['ai','human'] as const).map(t => (
-              <button type="button" key={t} className={`typepicker__opt${form.type === t ? ' typepicker__opt--active' : ''}`} onClick={() => set('type', t)}>
-                <Icon name={t} size={18}/>
-                <span className="typepicker__lbl">{t === 'ai' ? 'AI agent' : 'Human'}</span>
-                <span className="typepicker__sub">{t === 'ai' ? 'Autonomous, runs on schedule' : 'Teammate, approves & reviews'}</span>
-              </button>
+
+        <form onSubmit={submit} className="modal__body" style={{ gap: 20 }}>
+          {/* Template picker */}
+          <div className="field" style={{ gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span className="label">Start from template</span>
+              {selectedTemplate && (
+                <button type="button" className="btn btn--ghost btn--sm" style={{ fontSize: 'var(--fs-xs)' }} onClick={clearTemplate}>
+                  Clear
+                </button>
+              )}
+            </div>
+            {TIERS.map(tier => (
+              <div key={tier.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {tier.label}
+                </span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {AGENT_TEMPLATES.filter(t => t.seniority === tier.key).map(tpl => (
+                    <button
+                      type="button"
+                      key={tpl.id}
+                      onClick={() => selectedTemplate?.id === tpl.id ? clearTemplate() : applyTemplate(tpl)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: 4,
+                        border: `1px solid ${selectedTemplate?.id === tpl.id ? SENIORITY_COLOR[tier.key] : 'var(--line-2)'}`,
+                        background: selectedTemplate?.id === tpl.id ? 'var(--bg-inset)' : 'transparent',
+                        color: selectedTemplate?.id === tpl.id ? SENIORITY_COLOR[tier.key] : 'var(--ink-2)',
+                        fontSize: 'var(--fs-sm)',
+                        cursor: 'pointer',
+                        transition: 'all 0.1s',
+                      }}
+                    >
+                      {tpl.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
+
+          {/* Type picker — only shown for blank agents */}
+          {!selectedTemplate && (
+            <div className="typepicker">
+              {(['ai','human'] as const).map(t => (
+                <button type="button" key={t} className={`typepicker__opt${form.type === t ? ' typepicker__opt--active' : ''}`} onClick={() => set('type', t)}>
+                  <Icon name={t} size={18}/>
+                  <span className="typepicker__lbl">{t === 'ai' ? 'AI agent' : 'Human'}</span>
+                  <span className="typepicker__sub">{t === 'ai' ? 'Autonomous, runs on schedule' : 'Teammate, approves & reviews'}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="modal__grid">
             <div className="field">
               <label className="label">ID *</label>
@@ -446,8 +548,16 @@ function CreateAgentModal({ onClose, onCreate }: {
               <label className="label">Working directory</label>
               <input className="input mono" value={form.working_dir} onChange={e => set('working_dir', e.target.value)} placeholder="./workspaces/agent-id" />
             </div>
+            {selectedTemplate && (
+              <div className="field" style={{ gridColumn: '1/-1' }}>
+                <label className="label">Model</label>
+                <input className="input mono" value={form.model} onChange={e => set('model', e.target.value)} placeholder="anthropic/claude-sonnet-4-5"/>
+                <p className="settings__hint">Suggested for {SENIORITY_LABEL[selectedTemplate.seniority].toLowerCase()} tier. Edit freely.</p>
+              </div>
+            )}
           </div>
         </form>
+
         <div className="modal__foot">
           <div/>
           <div style={{ display:'flex', gap:8 }}>
@@ -494,9 +604,8 @@ export default function GraphPage() {
     return true
   })
 
-  const updateAgent = useCallback((id: string, patch: Partial<Agent>) => {
+  const updateAgentLocal = useCallback((id: string, patch: Partial<Agent>) => {
     setAgents(as => as.map(a => a.id === id ? { ...a, ...patch } : a))
-    // If reports_to changed, update edges accordingly
     if ('reports_to' in patch) {
       setEdges(es => {
         const withoutOld = es.filter(e => !(e.from_agent_id === id && e.type === 'reports_to'))
@@ -506,7 +615,10 @@ export default function GraphPage() {
         return withoutOld
       })
     }
-    agentsApi.update(id, patch).catch(() => {})
+  }, [])
+
+  const saveAgent = useCallback(async (id: string, agent: Agent) => {
+    await agentsApi.update(id, agent)
   }, [])
 
   const deleteAgent = useCallback(async (id: string) => {
@@ -516,7 +628,10 @@ export default function GraphPage() {
     if (selectedId === id) setSelectedId(null)
   }, [selectedId])
 
-  const createAgent = useCallback(async (data: { id: string; name: string; role_title: string; type: 'ai' | 'human'; working_dir: string }) => {
+  const createAgent = useCallback(async (data: {
+    id: string; name: string; role_title: string; type: 'ai' | 'human'
+    working_dir: string; model: string; system_prompt: string
+  }) => {
     const a = await agentsApi.create(data).catch(() => null)
     if (a) { setAgents(as => [...as, a]); setSelectedId(a.id) }
     setCreating(false)
@@ -593,7 +708,8 @@ export default function GraphPage() {
             agent={selected}
             agents={agents}
             skills={skills}
-            onUpdate={patch => updateAgent(selected.id, patch)}
+            onUpdate={patch => updateAgentLocal(selected.id, patch)}
+            onSave={agent => saveAgent(selected.id, agent)}
             onDelete={() => deleteAgent(selected.id)}
             onClose={() => setSelectedId(null)}
           />
