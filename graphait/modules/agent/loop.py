@@ -85,12 +85,23 @@ class AgentLoop:
         comments_text = "\n".join(
             f"[{c.author_id}]: {c.content}" for c in reversed(comments)
         ) or "(no comments yet)"
+
+        subtasks = getattr(self.task, "subtasks", []) or []
+        if subtasks:
+            subtasks_text = "\n".join(
+                f"  - #{s.number} [{s.status.value}] {s.title}" for s in subtasks
+            )
+        else:
+            subtasks_text = "  (none)"
+
         return (
             f"## Task #{self.task.number}: {self.task.title}\n\n"
             f"{self.task.description or '(no description)'}\n\n"
             f"Priority: {self.task.priority.value} | Status: {self.task.status.value}\n\n"
+            f"## Existing subtasks (do NOT recreate these)\n{subtasks_text}\n\n"
             f"## Recent comments\n{comments_text}\n\n---\n"
-            f"Read the recent comments above before starting any work. "
+            f"Read the existing subtasks and comments above before starting any work. "
+            f"Do not create subtasks that already exist. "
             f"Call update_status(done) when complete, "
             f"update_status(blocked) if you need more information."
         )

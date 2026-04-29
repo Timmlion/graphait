@@ -22,8 +22,10 @@ async def run_agent_tick(agent_id: str) -> None:
         return
 
     with SessionLocal() as db:
+        from sqlalchemy.orm import joinedload
         task = (
             db.query(Task)
+            .options(joinedload(Task.subtasks))
             .filter(
                 Task.assignee_id == agent_id,
                 Task.status.in_([TaskStatus.todo, TaskStatus.in_progress]),
