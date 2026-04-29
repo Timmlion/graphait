@@ -11,8 +11,14 @@ async def run_agent_tick(agent_id: str) -> None:
     from graphait.modules.agent.loop import AgentLoop
     from graphait.modules.scheduler.service import scheduler_service
 
+    logger.info("agent=%s wake-up triggered", agent_id)
+
     agent_cfg = load_agent(agent_id)
-    if not agent_cfg or agent_cfg.type != "ai":
+    if not agent_cfg:
+        logger.warning("agent=%s config not found — skipping", agent_id)
+        return
+    if agent_cfg.type != "ai":
+        logger.debug("agent=%s type=%s is not ai — skipping", agent_id, agent_cfg.type)
         return
 
     with SessionLocal() as db:
@@ -26,8 +32,11 @@ async def run_agent_tick(agent_id: str) -> None:
             .first()
         )
         if not task:
+            logger.info("agent=%s no actionable tasks found — going back to sleep", agent_id)
             return
 
+        logger.info("agent=%s picked up task #%s (id=%s status=%s)",
+                    agent_id, task.number, task.id, task.status.value)
         org_cfg = load_org()
         loop = AgentLoop(
             agent=agent_cfg,
@@ -38,5 +47,6 @@ async def run_agent_tick(agent_id: str) -> None:
         )
         try:
             await loop.run()
+            logger.info("agent=%s task #%s run complete", agent_id, task.number)
         except Exception as e:
             logger.error("AgentLoop error (agent=%s task=%s): %s", agent_id, task.id, e)

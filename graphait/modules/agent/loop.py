@@ -124,14 +124,17 @@ class AgentLoop:
         from graphait.models.run import AgentRun, RunEvent, RunStatus, RunEventRole
         from datetime import datetime
 
+        logger.info("agent=%s starting run for task #%s (id=%s)",
+                    self.agent.id, self.task.number, self.task.id)
+
         # Guard: skip if another run is already active for this task
         active = (self.db.query(AgentRun)
                   .filter(AgentRun.task_id == self.task.id,
                           AgentRun.status == RunStatus.running)
                   .first())
         if active:
-            logger.warning("Task %s already locked by run %s (agent=%s) — skipping",
-                           self.task.id, active.id, active.agent_id)
+            logger.warning("agent=%s task #%s already locked by run %s — skipping",
+                           self.agent.id, self.task.number, active.id)
             return
 
         run = AgentRun(
@@ -194,14 +197,20 @@ class AgentLoop:
                 except json.JSONDecodeError:
                     args = {}
                 _log(RunEventRole.tool_call, fn["arguments"], tool_name=fn["name"])
+                logger.info("agent=%s task=%s tool=%s args=%s",
+                            self.agent.id, self.task.id, fn["name"], fn["arguments"][:200])
                 result = execute_tool(fn["name"], args, ctx)
                 messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
                 _log(RunEventRole.tool_result, result, tool_name=fn["name"])
+                logger.info("agent=%s tool=%s result=%s", self.agent.id, fn["name"], result[:200])
+                terminal_statuses = {"done", "blocked", "cancelled", "waiting_approval"}
                 if fn["name"] == "update_status":
-                    finish_status = (RunStatus.blocked if args.get("status") == "blocked"
-                                     else RunStatus.done)
-                    _close(finish_status)
-                    return
+                    new_status = args.get("status", "")
+                    if new_status in terminal_statuses:
+                        finish_status = RunStatus.blocked if new_status == "blocked" else RunStatus.done
+                        _close(finish_status)
+                        return
+                    # non-terminal status (in_progress, in_review) — continue loop
                 if fn["name"] == "request_approval":
                     _close(RunStatus.blocked)
                     return
