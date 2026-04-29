@@ -525,7 +525,8 @@ export default function BoardPage() {
 
   const toggleGroup = (g: string) => setCollapsed(c => ({ ...c, [g]: !c[g] }))
 
-  const openTaskCount = tasks.filter(t => !['done','cancelled','approved','rejected'].includes(t.status)).length
+  const rootTasks = tasks.filter(t => !t.parent_task_id)
+  const openTaskCount = rootTasks.filter(t => !['done','cancelled','approved','rejected'].includes(t.status)).length
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100vh', minHeight:0 }}>
@@ -551,7 +552,7 @@ export default function BoardPage() {
             <GroupRail
               key={group}
               group={group}
-              tasks={tasks}
+              tasks={rootTasks}
               agentMap={agentMap}
               collapsed={!!collapsed[group]}
               onToggle={() => toggleGroup(group)}

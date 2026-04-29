@@ -867,3 +867,91 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 12px; color: var(--ink-3); font-size: var(--fs-sm);
 }
+
+/* ─── Docs ─── */
+.docs { display: flex; flex-direction: column; height: 100vh; min-height: 0; }
+
+.docs__layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.docs__sidebar {
+  border-right: 1px solid var(--line-1);
+  overflow-y: auto;
+  background: var(--bg-1);
+  padding: 8px 0;
+}
+
+.docs__tree { display: flex; flex-direction: column; }
+
+.docs__entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 0;
+  padding-right: 12px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+  transition: background 60ms;
+}
+.docs__entry:hover { background: var(--bg-2); color: var(--ink-1); }
+.docs__entry--active { background: var(--accent-wash); color: var(--ink-1); }
+
+.docs__dirname { font-weight: 500; color: var(--ink-1); }
+.docs__filename { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.docs__size { font-size: var(--fs-micro); color: var(--ink-4); margin-left: auto; flex-shrink: 0; }
+
+.docs__content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-0);
+}
+
+.docs__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--ink-4);
+  font-size: var(--fs-sm);
+}
+
+.docs__viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.docs__viewer-head {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line-1);
+  background: var(--bg-1);
+  flex-shrink: 0;
+}
+.docs__viewer-path { font-size: var(--fs-xs); color: var(--ink-3); }
+
+.docs__viewer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 20px 24px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.65;
+  color: var(--ink-2);
+  white-space: pre;
+  tab-size: 2;
+}
