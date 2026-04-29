@@ -26,14 +26,15 @@ TOOL_SCHEMAS: dict[str, dict] = {
                        "required": ["status"]}}},
     "create_task": {"type": "function", "function": {
         "name": "create_task",
-        "description": "Create a new task, optionally assign to an agent by ID slug.",
+        "description": "Create a new task, optionally assign to an agent by ID slug. Pass parent_task_id to create a subtask under an existing task.",
         "parameters": {"type": "object",
                        "properties": {
                            "title": {"type": "string"},
                            "description": {"type": "string"},
                            "assignee_id": {"type": "string"},
                            "priority": {"type": "string",
-                                        "enum": ["low", "medium", "high", "urgent"]}},
+                                        "enum": ["low", "medium", "high", "urgent"]},
+                           "parent_task_id": {"type": "string", "description": "UUID of the parent task to create this as a subtask"}},
                        "required": ["title"]}}},
     "assign_task": {"type": "function", "function": {
         "name": "assign_task",
@@ -148,17 +149,25 @@ def _create_task(args: dict, ctx: ToolContext) -> str:
     from graphait.models.task import Task, TaskStatus, TaskPriority
     org_id = uuid.UUID(ctx.org_id)
     num = (ctx.db.query(func.max(Task.number)).filter(Task.org_id == org_id).scalar() or 0) + 1
+    parent_id = None
+    if args.get("parent_task_id"):
+        try:
+            parent_id = uuid.UUID(args["parent_task_id"])
+        except ValueError:
+            pass
     task = Task(org_id=org_id, title=args["title"], description=args.get("description"),
                 creator_id=ctx.agent_id,
                 assignee_id=args.get("assignee_id"),
                 priority=TaskPriority(args.get("priority", "medium")),
-                status=TaskStatus.todo, number=num)
+                status=TaskStatus.todo, number=num,
+                parent_task_id=parent_id)
     ctx.db.add(task)
     ctx.db.commit()
     ctx.db.refresh(task)
     if task.assignee_id and ctx.scheduler_trigger:
         ctx.scheduler_trigger(task.assignee_id)
-    return f"Task #{task.number} created: '{task.title}'."
+    parent_info = f" (subtask of #{args['parent_task_id'][:8]})" if parent_id else ""
+    return f"Task #{task.number} created: '{task.title}'{parent_info}."
 
 
 def _assign_task(args: dict, ctx: ToolContext) -> str:

@@ -87,3 +87,31 @@ def test_outcome_updatable_via_patch(client, headers, db):
     resp = client.patch(f"/api/v1/tasks/{task_id}", json={"outcome": "Done and deployed."}, headers=headers)
     assert resp.status_code == 200
     assert resp.json()["outcome"] == "Done and deployed."
+
+
+def test_subtasks_returned_in_task_read(client, headers, db):
+    from graphait.models.task import Task, TaskStatus, TaskPriority
+    resp = client.post("/api/v1/tasks", json={"title": "Parent task"}, headers=headers)
+    assert resp.status_code == 201
+    parent_id = resp.json()["id"]
+
+    parent = db.query(Task).filter(Task.id == uuid.UUID(parent_id)).first()
+
+    # Create a subtask directly in DB
+    sub = Task(
+        org_id=parent.org_id,
+        number=99,
+        title="Fix the bug",
+        status=TaskStatus.todo,
+        priority=TaskPriority.medium,
+        parent_task_id=parent.id,
+    )
+    db.add(sub)
+    db.commit()
+
+    resp = client.get(f"/api/v1/tasks/{parent_id}", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "subtasks" in data
+    assert len(data["subtasks"]) == 1
+    assert data["subtasks"][0]["title"] == "Fix the bug"

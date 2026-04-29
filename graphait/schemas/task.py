@@ -38,5 +38,8 @@ class TaskRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     outcome: Optional[str] = None
+    subtasks: list['TaskRead'] = []
 
     model_config = {"from_attributes": True}
+
+TaskRead.model_rebuild()

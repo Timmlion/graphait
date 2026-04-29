@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react'
+import { useState, useEffect, useCallback, type FormEvent, type CSSProperties } from 'react'
 import { tasksApi, type Task, type Comment, type TaskStatus, type TaskPriority } from '../api/tasks'
 import { agentsApi, type Agent } from '../api/agents'
 import { useAuth } from '../context/AuthContext'
@@ -87,6 +87,12 @@ function TaskCard({ task, agentMap, onOpen }: {
           : <span className="taskcard__unassigned">Unassigned</span>
         }
         <span className="taskcard__spacer" />
+        {task.subtasks.length > 0 && (
+          <span className="mono" style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)',display:'flex',alignItems:'center',gap:3}}>
+            <Icon name="board" size={10} />
+            {task.subtasks.length}
+          </span>
+        )}
         <span className="taskcard__time mono">{timeAgo(task.updated_at)}</span>
       </footer>
     </article>
@@ -268,6 +274,8 @@ function TaskDrawer({ task, agents, onClose, onUpdated }: {
   const [sending, setSending]       = useState(false)
   const [title, setTitle]           = useState(task.title)
   const [description, setDescription] = useState(task.description ?? '')
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
+  const [addingSubtask, setAddingSubtask] = useState(false)
 
   useEffect(() => {
     setTitle(task.title)
@@ -285,6 +293,17 @@ function TaskDrawer({ task, agents, onClose, onUpdated }: {
   }
   const saveDesc = async () => {
     if (description !== (task.description ?? '')) await update({ description })
+  }
+
+  const createSubtask = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!newSubtaskTitle.trim()) return
+    setAddingSubtask(true)
+    try {
+      const sub = await tasksApi.createSubtask(task.id, { title: newSubtaskTitle.trim() })
+      onUpdated({ ...task, subtasks: [...task.subtasks, sub] })
+      setNewSubtaskTitle('')
+    } finally { setAddingSubtask(false) }
   }
 
   const sendComment = async (e: FormEvent) => {
@@ -377,6 +396,47 @@ function TaskDrawer({ task, agents, onClose, onUpdated }: {
               placeholder="Add a description…"
               rows={4}
             />
+          </div>
+
+          <div className="drawer__section">
+            <div className="drawer__subhead">
+              <div className="eyebrow">Subtasks</div>
+              {task.subtasks.length > 0 && <span style={{fontSize:'var(--fs-xs)',color:'var(--ink-3)'}}>{task.subtasks.length}</span>}
+            </div>
+            {task.subtasks.length > 0 && (
+              <div style={{display:'flex',flexDirection:'column',gap:4,marginBottom:8}}>
+                {task.subtasks.map(sub => (
+                  <div key={sub.id} style={{
+                    display:'flex',alignItems:'center',gap:8,
+                    padding:'6px 10px',
+                    background:'var(--surface-2)',
+                    borderRadius:4,
+                    fontSize:'var(--fs-sm)',
+                  }}>
+                    <span className="badge badge--dot" style={{'--dot': STATUS_META[sub.status].dot, fontSize:'var(--fs-xs)'} as CSSProperties}>
+                      {STATUS_META[sub.status].label}
+                    </span>
+                    <span style={{flex:1}}>#{sub.number} {sub.title}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <form onSubmit={createSubtask}>
+              <div className="compose">
+                <input
+                  className="compose__input"
+                  style={{padding:'6px 10px',fontSize:'var(--fs-sm)'}}
+                  placeholder="Add subtask…"
+                  value={newSubtaskTitle}
+                  onChange={e => setNewSubtaskTitle(e.target.value)}
+                />
+                <div className="compose__foot">
+                  <button type="submit" className="btn btn--primary btn--sm" disabled={addingSubtask || !newSubtaskTitle.trim()}>
+                    {addingSubtask ? '…' : 'Add'}
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
 
           <div className="drawer__section">

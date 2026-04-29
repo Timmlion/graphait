@@ -280,3 +280,44 @@ async def test_run_skips_if_task_already_locked(db):
     # No new AgentRun should have been created
     runs = db.query(AgentRun).all()
     assert len(runs) == 1  # only the seeded one
+
+
+@pytest.mark.asyncio
+async def test_agent_can_create_subtask(db):
+    """Agent creates a subtask by passing parent_task_id to create_task."""
+    from graphait.modules.agent.loop import AgentLoop
+    from graphait.models.task import Task
+
+    task = make_task(db)
+    tool_call = {
+        "id": "call_1", "type": "function",
+        "function": {
+            "name": "create_task",
+            "arguments": json.dumps({
+                "title": "Write unit tests",
+                "parent_task_id": str(task.id),
+            })
+        }
+    }
+    responses = [mock_response(tool_calls=[tool_call]), mock_response(content="Done.")]
+    idx = [0]
+
+    async def fake_post(*a, **kw):
+        r = MagicMock(); r.status_code = 200
+        r.json.return_value = responses[min(idx[0], len(responses) - 1)]
+        idx[0] += 1
+        return r
+
+    with patch("graphait.modules.agent.loop.httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.post.side_effect = fake_post
+        await AgentLoop(make_agent(), make_org(), task, db).run()
+
+    from graphait.models.organization import Organization
+    org = db.query(Organization).first()
+    all_tasks = db.query(Task).filter(Task.org_id == org.id).all()
+    subtask = next((t for t in all_tasks if t.id != task.id), None)
+    assert subtask is not None
+    assert subtask.title == "Write unit tests"
+    assert subtask.parent_task_id == task.id
