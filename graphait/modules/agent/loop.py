@@ -60,7 +60,8 @@ class AgentLoop:
             f"{self.task.description or '(no description)'}\n\n"
             f"Priority: {self.task.priority.value} | Status: {self.task.status.value}\n\n"
             f"## Recent comments\n{comments_text}\n\n---\n"
-            f"Work on this task. Call update_status(done) when complete, "
+            f"Read the recent comments above before starting any work. "
+            f"Call update_status(done) when complete, "
             f"update_status(blocked) if you need more information."
         )
 
