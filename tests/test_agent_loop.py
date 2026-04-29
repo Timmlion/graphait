@@ -283,6 +283,36 @@ async def test_run_skips_if_task_already_locked(db):
 
 
 @pytest.mark.asyncio
+async def test_loop_injects_project_dir_in_system_prompt(db, tmp_path, monkeypatch):
+    import graphait.config.loader as loader_mod
+    monkeypatch.setattr(loader_mod, "CONFIG_DIR", tmp_path / "config")
+    loader_mod.init_config_dir()
+
+    from graphait.modules.agent.loop import AgentLoop
+    from graphait.config.loader import OrgConfig
+
+    org = OrgConfig(
+        name="Acme", system_prompt="Build quality software.",
+        openrouter_api_key="sk-org", default_model="anthropic/claude-3-5-sonnet",
+        project_dir="/Users/test/projects/my-app",
+    )
+    task = make_task(db)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = mock_response(content="Done.")
+
+    with patch("graphait.modules.agent.loop.httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        await AgentLoop(make_agent(), org, task, db).run()
+
+    call_json = mock_http.post.call_args.kwargs["json"]
+    system_content = next(m["content"] for m in call_json["messages"] if m["role"] == "system")
+    assert "Project directory (shared repo root): /Users/test/projects/my-app" in system_content
+
+
+@pytest.mark.asyncio
 async def test_agent_can_create_subtask(db):
     """Agent creates a subtask by passing parent_task_id to create_task."""
     from graphait.modules.agent.loop import AgentLoop

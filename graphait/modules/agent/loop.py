@@ -33,6 +33,8 @@ class AgentLoop:
             parts.append(self.agent.system_prompt)
         if self.agent.working_dir:
             parts.append(f"Your working directory: {self.agent.working_dir}")
+        if self.org.project_dir:
+            parts.append(f"Project directory (shared repo root): {self.org.project_dir}")
         for slug in self.agent.skills:
             content = load_skill(slug)
             if content:

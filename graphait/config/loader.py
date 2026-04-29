@@ -32,6 +32,7 @@ class OrgConfig:
     openrouter_api_key: Optional[str] = None
     default_model: str = "anthropic/claude-sonnet-4-5"
     search_api_key: Optional[str] = None
+    project_dir: Optional[str] = None
 
 
 def _agents_dir() -> Path:

@@ -37,3 +37,14 @@ def test_patch_org_settings(client, auth_headers):
     assert data["system_prompt"] == "Build quality software."
     assert data["openrouter_api_key"] == "sk-test-123"
     assert data["search_api_key"] == "search-key-abc"
+
+
+def test_project_dir_saved_and_returned(client, auth_headers):
+    resp = client.patch("/api/v1/org", json={"project_dir": "/Users/test/myproject"},
+                        headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["project_dir"] == "/Users/test/myproject"
+
+    resp = client.get("/api/v1/org", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["project_dir"] == "/Users/test/myproject"

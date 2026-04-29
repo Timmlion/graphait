@@ -18,6 +18,7 @@ class OrgSettingsRead(BaseModel):
     openrouter_api_key: Optional[str] = None
     default_model: Optional[str] = None
     search_api_key: Optional[str] = None
+    project_dir: Optional[str] = None
 
 
 class OrgSettingsPatch(BaseModel):
@@ -25,6 +26,7 @@ class OrgSettingsPatch(BaseModel):
     openrouter_api_key: Optional[str] = None
     default_model: Optional[str] = None
     search_api_key: Optional[str] = None
+    project_dir: Optional[str] = None
 
 
 def _read_response(user: User, cfg: OrgConfig) -> OrgSettingsRead:
@@ -36,6 +38,7 @@ def _read_response(user: User, cfg: OrgConfig) -> OrgSettingsRead:
         openrouter_api_key=cfg.openrouter_api_key,
         default_model=cfg.default_model,
         search_api_key=cfg.search_api_key,
+        project_dir=cfg.project_dir,
     )
 
 
@@ -62,5 +65,7 @@ def patch_org_settings(
         cfg.default_model = body.default_model
     if body.search_api_key is not None:
         cfg.search_api_key = body.search_api_key
+    if body.project_dir is not None:
+        cfg.project_dir = body.project_dir
     save_org(cfg)
     return _read_response(current_user, cfg)

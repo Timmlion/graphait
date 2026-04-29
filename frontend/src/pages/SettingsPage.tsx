@@ -12,6 +12,7 @@ export default function SettingsPage() {
   const [customModel, setCustomModel] = useState('')
   const [orgPrompt, setOrgPrompt]     = useState('')
   const [searchApiKey, setSearchApiKey] = useState('')
+  const [projectDir, setProjectDir] = useState('')
   const [showKey, setShowKey]         = useState(false)
   const [saveState, setSaveState]     = useState<SaveState>('idle')
   const [loading, setLoading]         = useState(true)
@@ -28,6 +29,7 @@ export default function SettingsPage() {
         setApiKey(key)
         setOrgPrompt(s.system_prompt ?? '')
         setSearchApiKey(s.search_api_key ?? '')
+        setProjectDir(s.project_dir ?? '')
         const known = OPENROUTER_MODELS.find(m => m.id === mdl && m.id !== '__custom__')
         if (!known && mdl) {
           setCustomModel(mdl)
@@ -54,6 +56,7 @@ export default function SettingsPage() {
         default_model: finalModel,
         system_prompt: orgPrompt,
         search_api_key: searchApiKey,
+        project_dir: projectDir || null,
       })
       setOrgSettings(updated)
       // Mirror to localStorage so connector config picker has a local fallback
@@ -179,6 +182,21 @@ export default function SettingsPage() {
             <span className="settings__section-title">Organization Context</span>
           </div>
           <div className="settings__fields">
+            <div className="field">
+              <label className="label" htmlFor="project-dir">Project Directory</label>
+              <input
+                id="project-dir"
+                className="input mono"
+                type="text"
+                placeholder="/Users/you/projects/my-app"
+                value={projectDir}
+                onChange={e => setProjectDir(e.target.value)}
+                spellCheck={false}
+              />
+              <p className="settings__hint">
+                Absolute path to the project repo. Injected into every agent's context as the shared project root.
+              </p>
+            </div>
             <div className="field">
               <label className="label" htmlFor="org-prompt">Org system prompt</label>
               <textarea
