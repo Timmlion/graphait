@@ -156,6 +156,7 @@ class AgentLoop:
         ctx = ToolContext(db=self.db, org_id=str(self.task.org_id),
                          task_id=str(self.task.id), agent_id=self._agent_db_id(),
                          working_dir=self.agent.working_dir,
+                         project_dir=self.org.project_dir or None,
                          search_api_key=self.org.search_api_key,
                          scheduler_trigger=self.scheduler_trigger)
         task_msg = self._task_message()

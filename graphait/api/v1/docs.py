@@ -38,7 +38,7 @@ def _project_root() -> Path:
 
 def _safe_path(root: Path, relative: str) -> Path:
     target = (root / relative).resolve()
-    if not str(target).startswith(str(root.resolve())):
+    if not target.is_relative_to(root.resolve()):
         raise HTTPException(status_code=400, detail="Path traversal not allowed")
     return target
 

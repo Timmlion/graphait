@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -38,10 +39,10 @@ TOOL_SCHEMAS: dict[str, dict] = {
                        "required": ["title"]}}},
     "assign_task": {"type": "function", "function": {
         "name": "assign_task",
-        "description": "Assign an existing task to an agent by ID slug.",
+        "description": "Assign an existing task to an agent by ID slug. task_id accepts a task number (e.g. '5' or '#5') or a UUID.",
         "parameters": {"type": "object",
                        "properties": {
-                           "task_id": {"type": "string"},
+                           "task_id": {"type": "string", "description": "Task number (e.g. '5' or '#5') or UUID"},
                            "assignee_id": {"type": "string"}},
                        "required": ["task_id", "assignee_id"]}}},
     "request_approval": {"type": "function", "function": {
@@ -91,6 +92,7 @@ class ToolContext:
     task_id: str
     agent_id: str
     working_dir: str
+    project_dir: str | None = None
     search_api_key: str | None = None
     scheduler_trigger: Any = None
 
@@ -103,10 +105,18 @@ def get_tool_schemas(optional_tools: list[str]) -> list[dict]:
     return schemas
 
 
-def _safe_path(working_dir: str, relative: str) -> Path | None:
+def _safe_path(working_dir: str, relative: str, project_dir: str | None = None) -> Path | None:
     base = Path(working_dir).resolve()
     target = (base / relative).resolve()
-    return target if str(target).startswith(str(base)) else None
+    base_s = str(base)
+    if str(target) == base_s or str(target).startswith(base_s + os.sep):
+        return target
+    if project_dir:
+        proj = Path(project_dir).resolve()
+        proj_s = str(proj)
+        if str(target) == proj_s or str(target).startswith(proj_s + os.sep):
+            return target
+    return None
 
 
 def execute_tool(name: str, args: dict, ctx: ToolContext) -> str:
@@ -167,31 +177,44 @@ def _create_task(args: dict, ctx: ToolContext) -> str:
     if task.assignee_id and ctx.scheduler_trigger:
         ctx.scheduler_trigger(task.assignee_id)
     parent_info = f" (subtask of #{args['parent_task_id'][:8]})" if parent_id else ""
-    return f"Task #{task.number} created: '{task.title}'{parent_info}."
+    return f"Task #{task.number} (id: {task.id}) created: '{task.title}'{parent_info}."
 
 
 def _assign_task(args: dict, ctx: ToolContext) -> str:
     import uuid
     from graphait.models.task import Task
-    task = ctx.db.query(Task).filter(Task.id == uuid.UUID(args["task_id"])).first()
+    task_ref = args["task_id"].lstrip("#").strip()
+    task = None
+    try:
+        task = ctx.db.query(Task).filter(Task.id == uuid.UUID(task_ref)).first()
+    except ValueError:
+        pass
+    if not task:
+        try:
+            task = ctx.db.query(Task).filter(
+                Task.number == int(task_ref),
+                Task.org_id == uuid.UUID(ctx.org_id),
+            ).first()
+        except ValueError:
+            pass
     if not task:
         return "Error: task not found"
     task.assignee_id = args["assignee_id"]
     ctx.db.commit()
     if ctx.scheduler_trigger:
         ctx.scheduler_trigger(args["assignee_id"])
-    return f"Task assigned to '{args['assignee_id']}'."
+    return f"Task #{task.number} assigned to '{args['assignee_id']}'."
 
 
 def _read_file(args: dict, ctx: ToolContext) -> str:
-    p = _safe_path(ctx.working_dir, args["path"])
+    p = _safe_path(ctx.working_dir, args["path"], ctx.project_dir)
     if p is None:
         return "Error: path traversal not allowed"
     return p.read_text(errors="replace") if p.exists() else f"Error: file not found: {args['path']}"
 
 
 def _write_file(args: dict, ctx: ToolContext) -> str:
-    p = _safe_path(ctx.working_dir, args["path"])
+    p = _safe_path(ctx.working_dir, args["path"], ctx.project_dir)
     if p is None:
         return "Error: path traversal not allowed"
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -201,7 +224,7 @@ def _write_file(args: dict, ctx: ToolContext) -> str:
 
 def _list_directory(args: dict, ctx: ToolContext) -> str:
     sub = args.get("path", "")
-    target = _safe_path(ctx.working_dir, sub) if sub else Path(ctx.working_dir).resolve()
+    target = _safe_path(ctx.working_dir, sub, ctx.project_dir) if sub else Path(ctx.working_dir).resolve()
     if target is None:
         return "Error: path traversal not allowed"
     if not target.exists():
