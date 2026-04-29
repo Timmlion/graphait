@@ -4,7 +4,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
-CONFIG_DIR = Path("config")
+CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "config"
 
 
 @dataclass
