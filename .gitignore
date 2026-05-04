@@ -38,3 +38,5 @@ env/
 workspaces/
 *.db
 graphait.db
+graphait-test/
+stitch_graphait_minimalist_workspace/
