@@ -1,0 +1,669 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --neon-blue: #00bfff;
+    --neon-cyan: #00ffff;
+    --neon-green: #00ff00;
+    --neon-red: #ff3333;
+    --neon-orange: #ff8c00;
+    --dark-bg: #0a0a15;
+    --dark-surface: #12121a;
+    --grid-border: #1e3a5f;
+    --grid-cell: #0d2137;
+    --grid-cell-hover: #1a4a7a;
+}
+
+body {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0a0a15 0%, #0d1b2a 50%, #0a0a15 100%);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #fff;
+    overflow-x: hidden;
+    padding: 20px;
+}
+
+/* Ocean-like background effect */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        radial-gradient(circle at 20% 80%, rgba(0, 191, 255, 0.1) 0%, transparent 25%),
+        radial-gradient(circle at 80% 20%, rgba(0, 191, 255, 0.1) 0%, transparent 25%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.game-container {
+    position: relative;
+    text-align: center;
+    z-index: 1;
+    width: 100%;
+    max-width: 1200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Game Header */
+.game-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 15px 25px;
+    background: rgba(18, 18, 26, 0.95);
+    border: 1px solid var(--neon-blue);
+    border-radius: 8px;
+    width: 100%;
+    max-width: 800px;
+    box-shadow: 0 0 20px rgba(0, 191, 255, 0.2);
+}
+
+.stats-display {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.score-display, .mode-display {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 191, 255, 0.3);
+    min-width: 120px;
+}
+
+.label {
+    color: #888;
+    margin-right: 8px;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+}
+
+#shipsPlaced, #gameStatus {
+    color: var(--neon-cyan);
+    font-weight: bold;
+    font-size: 1.1rem;
+    text-shadow: 0 0 10px var(--neon-cyan);
+}
+
+/* Game Content Layout */
+.game-content {
+    display: flex;
+    gap: 30px;
+    align-items: flex-start;
+    justify-content: center;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+/* Fleet Panel */
+.fleet-panel {
+    background: rgba(18, 18, 26, 0.95);
+    border: 1px solid var(--neon-blue);
+    border-radius: 8px;
+    padding: 20px;
+    min-width: 280px;
+    box-shadow: 0 0 20px rgba(0, 191, 255, 0.15);
+}
+
+.fleet-panel h2 {
+    color: var(--neon-cyan);
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.ships-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 25px;
+}
+
+.ship-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 12px;
+    background: rgba(0, 191, 255, 0.1);
+    border: 2px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.ship-item:hover {
+    background: rgba(0, 191, 255, 0.2);
+    border-color: var(--neon-blue);
+}
+
+.ship-item.selected {
+    background: rgba(0, 191, 255, 0.3);
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+}
+
+.ship-item.placed {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.ship-preview {
+    display: flex;
+    gap: 2px;
+}
+
+.ship-cell {
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.ship-info {
+    flex: 1;
+    text-align: left;
+}
+
+.ship-name {
+    font-weight: bold;
+    font-size: 0.95rem;
+    color: #fff;
+}
+
+.ship-size {
+    font-size: 0.8rem;
+    color: #888;
+}
+
+/* Placement Controls */
+.placement-controls {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(0, 191, 255, 0.2);
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.placement-controls h3 {
+    color: var(--neon-blue);
+    font-size: 1rem;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+}
+
+.control-group {
+    margin-bottom: 12px;
+}
+
+.control-group label {
+    display: block;
+    color: #aaa;
+    font-size: 0.85rem;
+    margin-bottom: 5px;
+}
+
+.control-group input,
+.control-group select {
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--grid-border);
+    border-radius: 4px;
+    color: #fff;
+    font-size: 0.95rem;
+    transition: border-color 0.3s ease;
+}
+
+.control-group input:focus,
+.control-group select:focus {
+    outline: none;
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+}
+
+.error-message {
+    color: var(--neon-red);
+    font-size: 0.85rem;
+    margin-top: 10px;
+    min-height: 20px;
+    font-weight: bold;
+}
+
+/* Fleet Legend */
+.fleet-legend {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(0, 191, 255, 0.2);
+    border-radius: 6px;
+    padding: 12px;
+}
+
+.fleet-legend h3 {
+    color: var(--neon-blue);
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    color: #ccc;
+}
+
+.legend-color {
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.legend-color.carrier { background: var(--neon-red); }
+.legend-color.battleship { background: var(--neon-orange); }
+.legend-color.cruiser { background: var(--neon-green); }
+.legend-color.submarine { background: var(--neon-cyan); }
+.legend-color.destroyer { background: var(--neon-blue); }
+
+/* Ship Colors for Grid */
+.ship-carrier { background: var(--neon-red) !important; }
+.ship-battleship { background: var(--neon-orange) !important; }
+.ship-cruiser { background: var(--neon-green) !important; }
+.ship-submarine { background: var(--neon-cyan) !important; }
+.ship-destroyer { background: var(--neon-blue) !important; }
+
+/* Grid Panel */
+.grid-panel {
+    background: rgba(18, 18, 26, 0.95);
+    border: 1px solid var(--neon-blue);
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 0 20px rgba(0, 191, 255, 0.15);
+}
+
+.grid-panel h2 {
+    color: var(--neon-cyan);
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.grid-container {
+    display: grid;
+    grid-template-columns: auto repeat(10, 1fr);
+    gap: 2px;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.grid-header-cell {
+    padding: 8px;
+    text-align: center;
+    font-weight: bold;
+    color: var(--neon-blue);
+    font-size: 1rem;
+}
+
+.grid-row-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: var(--neon-blue);
+    font-size: 1rem;
+    padding: 0 8px;
+}
+
+.grid-cell {
+    width: 40px;
+    height: 40px;
+    background: var(--grid-cell);
+    border: 1px solid var(--grid-border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.grid-cell:hover {
+    background: var(--grid-cell-hover);
+    border-color: var(--neon-blue);
+    transform: scale(1.05);
+    z-index: 10;
+}
+
+.grid-cell:focus {
+    outline: 3px solid var(--neon-cyan);
+    outline-offset: 2px;
+    z-index: 20;
+}
+
+.grid-cell.selected {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+}
+
+.grid-cell.preview {
+    background: rgba(0, 191, 255, 0.3);
+    border-color: var(--neon-blue);
+}
+
+.grid-cell.preview-invalid {
+    background: rgba(255, 51, 51, 0.3);
+    border-color: var(--neon-red);
+}
+
+.grid-cell.has-ship {
+    cursor: pointer;
+}
+
+.grid-cell.has-ship:hover {
+    opacity: 0.8;
+    transform: scale(1.1);
+}
+
+/* Grid Coordinate Tooltip */
+.grid-cell::after {
+    content: attr(data-coordinate);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: var(--neon-cyan);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 100;
+}
+
+.grid-cell:hover::after {
+    opacity: 1;
+}
+
+/* Overlays */
+.game-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(10, 10, 21, 0.98);
+    backdrop-filter: blur(10px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.4s ease, visibility 0.4s ease;
+    z-index: 1000;
+}
+
+.game-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.overlay-content {
+    text-align: center;
+    color: #fff;
+    max-width: 500px;
+    width: 90%;
+    padding: 40px 20px;
+    transform: scale(0.9);
+    transition: transform 0.4s ease;
+}
+
+.game-overlay.active .overlay-content {
+    transform: scale(1);
+}
+
+/* Game Title */
+.game-title {
+    font-size: 3rem;
+    font-weight: bold;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    position: relative;
+    animation: glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes glow {
+    from {
+        text-shadow: 
+            0 0 10px var(--neon-blue),
+            0 0 20px var(--neon-blue),
+            0 0 30px var(--neon-blue);
+    }
+    to {
+        text-shadow: 
+            0 0 20px var(--neon-cyan),
+            0 0 40px var(--neon-cyan),
+            0 0 60px var(--neon-cyan);
+    }
+}
+
+.victory-text {
+    color: var(--neon-green);
+}
+
+.victory-text .neon-text {
+    color: var(--neon-green);
+    text-shadow: 0 0 10px var(--neon-green),
+                 0 0 20px var(--neon-green),
+                 0 0 40px var(--neon-green);
+}
+
+/* Instructions */
+.instructions {
+    background: rgba(0, 191, 255, 0.1);
+    border: 1px solid rgba(0, 191, 255, 0.3);
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+}
+
+.instructions h2 {
+    font-size: 1.3rem;
+    margin-bottom: 15px;
+    color: var(--neon-cyan);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.instructions ul {
+    list-style: none;
+    text-align: left;
+}
+
+.instructions li {
+    margin: 10px 0;
+    font-size: 1rem;
+    color: #ccc;
+    line-height: 1.6;
+}
+
+/* Cyberpunk Button */
+.cyber-button {
+    background: linear-gradient(135deg, var(--neon-blue), var(--neon-cyan));
+    border: none;
+    padding: 15px 50px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: var(--dark-bg);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 20px rgba(0, 191, 255, 0.4);
+}
+
+.cyber-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 0 30px rgba(0, 255, 255, 0.6);
+}
+
+.cyber-button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.cyber-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.cyber-button:focus {
+    outline: 3px solid var(--neon-red);
+    outline-offset: 2px;
+}
+
+/* Final Stats */
+.final-stats {
+    margin: 25px 0;
+    font-size: 1.2rem;
+    color: #ccc;
+}
+
+.final-stats p {
+    margin: 10px 0;
+}
+
+/* Controls Info */
+.controls-info {
+    margin-top: 20px;
+    color: #666;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.controls-info p {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 10px 20px;
+    border-radius: 6px;
+    display: inline-block;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Responsive Design */
+@media (max-width: 900px) {
+    .game-content {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .fleet-panel {
+        min-width: 100%;
+        max-width: 500px;
+    }
+    
+    .grid-panel {
+        padding: 15px;
+    }
+}
+
+@media (max-width: 600px) {
+    body {
+        padding: 10px;
+    }
+    
+    .game-title {
+        font-size: 2rem;
+        letter-spacing: 2px;
+    }
+    
+    .overlay-content {
+        padding: 20px 15px;
+    }
+    
+    .instructions {
+        padding: 15px;
+    }
+    
+    .instructions h2 {
+        font-size: 1.1rem;
+    }
+    
+    .instructions li {
+        font-size: 0.9rem;
+    }
+    
+    .cyber-button {
+        padding: 12px 30px;
+        font-size: 0.95rem;
+    }
+    
+    .game-header {
+        padding: 12px 15px;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    
+    .grid-cell {
+        width: 32px;
+        height: 32px;
+    }
+    
+    .grid-header-cell,
+    .grid-row-label {
+        font-size: 0.85rem;
+        padding: 4px;
+    }
+    
+    .fleet-panel h2,
+    .grid-panel h2 {
+        font-size: 1.2rem;
+    }
+    
+    .controls-info {
+        font-size: 0.75rem;
+    }
+    
+    .controls-info p {
+        padding: 8px 12px;
+    }
+}
+
+@media (max-width: 400px) {
+    .grid-cell {
+        width: 28px;
+        height: 28px;
+    }
+    
+    .game-title {
+        font-size: 1.5rem;
+    }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

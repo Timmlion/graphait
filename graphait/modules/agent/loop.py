@@ -1,0 +1,280 @@
+from __future__ import annotations
+import json
+import logging
+import uuid
+from typing import Any
+
+import httpx
+from sqlalchemy.orm import Session
+
+from graphait.config.loader import AgentConfig, OrgConfig, load_skill, load_context
+from graphait.models.task import Task, Comment, TaskStatus
+from graphait.modules.agent.tools import ToolContext, get_tool_schemas, execute_tool
+
+logger = logging.getLogger(__name__)
+MAX_ITERATIONS = 20
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+class AgentLoop:
+    def __init__(self, agent: AgentConfig, org: OrgConfig, task: Task,
+                 db: Session, scheduler_trigger: Any = None):
+        self.agent = agent
+        self.org = org
+        self.task = task
+        self.db = db
+        self.scheduler_trigger = scheduler_trigger
+
+    def _system_prompt(self) -> str:
+        parts = []
+        if self.org.system_prompt:
+            parts.append(self.org.system_prompt)
+        if self.agent.system_prompt:
+            parts.append(self.agent.system_prompt)
+        if self.agent.working_dir:
+            parts.append(f"Your working directory: {self.agent.working_dir}")
+        if self.org.project_dir:
+            parts.append(f"Project directory (shared repo root): {self.org.project_dir}")
+        hierarchy = self._hierarchy_block()
+        if hierarchy:
+            parts.append(hierarchy)
+        for slug in self.agent.skills:
+            content = load_skill(slug)
+            if content:
+                parts.append(f"## Skill: {slug.replace('-', ' ').title()}\n{content}")
+            else:
+                logger.warning("Skill not found: %s (agent=%s)", slug, self.agent.id)
+        for slug in self.agent.context:
+            content = load_context(slug)
+            if content:
+                parts.append(f"## Context: {slug.replace('-', ' ').title()}\n{content}")
+            else:
+                logger.warning("Context doc not found: %s (agent=%s)", slug, self.agent.id)
+        return "\n\n".join(parts)
+
+    def _hierarchy_block(self) -> str:
+        from graphait.config.loader import load_agents
+        all_agents = load_agents()
+        agent_map = {a.id: a for a in all_agents}
+
+        lines = []
+
+        if self.agent.reports_to:
+            superior = agent_map.get(self.agent.reports_to)
+            if superior:
+                lines.append(
+                    f"You report to: {superior.name} (id: {superior.id}, role: {superior.role_title})"
+                    f" — escalate approvals and blockers there."
+                )
+
+        direct_reports = [a for a in all_agents if a.reports_to == self.agent.id]
+        if direct_reports:
+            lines.append("Your direct reports (delegate work to them using create_task or assign_task):")
+            for r in direct_reports:
+                lines.append(f"  - {r.name} (id: {r.id}, role: {r.role_title})")
+
+        if not lines:
+            return ""
+        return "## Your position in the org\n" + "\n".join(lines)
+
+    def _task_message(self) -> str:
+        comments = (self.db.query(Comment)
+                    .filter(Comment.task_id == self.task.id)
+                    .order_by(Comment.created_at.desc())
+                    .limit(10).all())
+        comments_text = "\n".join(
+            f"[{c.author_id}]: {c.content}" for c in reversed(comments)
+        ) or "(no comments yet)"
+
+        subtasks = getattr(self.task, "subtasks", []) or []
+        if subtasks:
+            subtasks_text = "\n".join(
+                f"  - #{s.number} [{s.status.value}] {s.title}" for s in subtasks
+            )
+        else:
+            subtasks_text = "  (none)"
+
+        if (self.task.blocked_by_agent_id
+                and self.task.blocked_by_agent_id != self.agent.id):
+            footer = (
+                f"## Important: You have been asked a question\n"
+                f"@{self.task.blocked_by_agent_id} is waiting for your answer "
+                f"(see the latest comment above).\n"
+                f"Post your answer using post_comment, then end your turn normally.\n"
+                f"The task will automatically return to "
+                f"@{self.task.blocked_by_agent_id} after your run completes.\n"
+                f"Do NOT call update_status(done) — you are not the owner of this task."
+            )
+        else:
+            footer = (
+                "Read the existing subtasks and comments above before starting any work. "
+                "Do not create subtasks that already exist. "
+                "Call update_status(done) when complete, "
+                "update_status(blocked) if you need more information."
+            )
+
+        return (
+            f"## Task #{self.task.number}: {self.task.title}\n\n"
+            f"{self.task.description or '(no description)'}\n\n"
+            f"Priority: {self.task.priority.value} | Status: {self.task.status.value}\n\n"
+            f"## Existing subtasks (do NOT recreate these)\n{subtasks_text}\n\n"
+            f"## Recent comments\n{comments_text}\n\n---\n"
+            f"{footer}"
+        )
+
+    async def _call_api(self, messages: list[dict], tools: list[dict]) -> dict:
+        api_key = self.agent.api_key or self.org.openrouter_api_key or ""
+        model = self.agent.model or self.org.default_model
+        payload: dict = {"model": model, "messages": messages}
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                OPENROUTER_URL,
+                headers={"Authorization": f"Bearer {api_key}",
+                         "Content-Type": "application/json"},
+                json=payload,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    def _agent_db_id(self) -> uuid.UUID:
+        """Return the DB agent UUID for FK columns.
+
+        AgentConfig.id is a string slug; DB Comment/Task FK columns need a UUID.
+        We resolve it from the task's assignee (the agent running this loop).
+        """
+        return self.task.assignee_id if self.task.assignee_id else self.task.creator_id
+
+    async def run(self) -> None:
+        from graphait.models.run import AgentRun, RunEvent, RunStatus, RunEventRole
+        from datetime import datetime
+
+        logger.info("agent=%s starting run for task #%s (id=%s)",
+                    self.agent.id, self.task.number, self.task.id)
+
+        # Guard: skip if another run is already active for this task
+        active = (self.db.query(AgentRun)
+                  .filter(AgentRun.task_id == self.task.id,
+                          AgentRun.status == RunStatus.running)
+                  .first())
+        if active:
+            logger.warning("agent=%s task #%s already locked by run %s — skipping",
+                           self.agent.id, self.task.number, active.id)
+            return
+
+        run = AgentRun(
+            agent_id=self.agent.id,
+            task_id=self.task.id,
+            status=RunStatus.running,
+        )
+        self.db.add(run)
+        self.db.commit()
+        self.db.refresh(run)
+
+        def _log(role: RunEventRole, content: str, tool_name: str | None = None) -> None:
+            self.db.add(RunEvent(run_id=run.id, role=role, content=content, tool_name=tool_name))
+            self.db.commit()
+
+        def _maybe_unblock_return() -> None:
+            self.db.refresh(self.task)
+            orig = self.task.blocked_by_agent_id
+            if not orig:
+                return
+            if self.agent.id == orig:
+                return
+            from graphait.modules.tasks.blocking import blocking_service
+            blocking_service.on_run_closed(self.db, self.task, self.agent.id)
+
+        def _close(status: RunStatus) -> None:
+            run.finished_at = datetime.utcnow()
+            run.status = status
+            self.db.commit()
+            _maybe_unblock_return()
+
+        tools = get_tool_schemas(self.agent.tools)
+        ctx = ToolContext(db=self.db, org_id=str(self.task.org_id),
+                         task_id=str(self.task.id), agent_id=self._agent_db_id(),
+                         working_dir=self.agent.working_dir,
+                         project_dir=self.org.project_dir or None,
+                         search_api_key=self.org.search_api_key,
+                         scheduler_trigger=self.scheduler_trigger)
+        task_msg = self._task_message()
+        messages: list[dict] = [
+            {"role": "system", "content": self._system_prompt()},
+            {"role": "user", "content": task_msg},
+        ]
+        _log(RunEventRole.user, task_msg)
+
+        for iteration in range(MAX_ITERATIONS):
+            self.db.refresh(run)
+            if run.status == RunStatus.stopped:
+                logger.info("agent=%s run %s stopped externally — exiting loop",
+                            self.agent.id, run.id)
+                return
+
+            try:
+                data = await self._call_api(messages, tools)
+            except Exception as e:
+                logger.error("API error (agent=%s iter=%d): %s", self.agent.id, iteration, e)
+                self._system_comment(f"API error: {e}")
+                _close(RunStatus.error)
+                break
+
+            msg = data["choices"][0]["message"]
+            messages.append(msg)
+            tool_calls = msg.get("tool_calls") or []
+
+            if not tool_calls:
+                if msg.get("content"):
+                    self._agent_comment(msg["content"])
+                    _log(RunEventRole.assistant, msg["content"])
+                self._set_status("done")
+                _close(RunStatus.done)
+                return
+
+            for tc in tool_calls:
+                fn = tc["function"]
+                try:
+                    args = json.loads(fn["arguments"])
+                except json.JSONDecodeError:
+                    args = {}
+                _log(RunEventRole.tool_call, fn["arguments"], tool_name=fn["name"])
+                logger.info("agent=%s task=%s tool=%s args=%s",
+                            self.agent.id, self.task.id, fn["name"], fn["arguments"][:200])
+                result = execute_tool(fn["name"], args, ctx)
+                messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
+                _log(RunEventRole.tool_result, result, tool_name=fn["name"])
+                logger.info("agent=%s tool=%s result=%s", self.agent.id, fn["name"], result[:200])
+                terminal_statuses = {"done", "blocked", "cancelled", "waiting_approval"}
+                if fn["name"] == "update_status":
+                    new_status = args.get("status", "")
+                    if new_status in terminal_statuses:
+                        finish_status = RunStatus.blocked if new_status == "blocked" else RunStatus.done
+                        _close(finish_status)
+                        return
+                    # non-terminal status (in_progress, in_review) — continue loop
+                if fn["name"] == "request_approval":
+                    _close(RunStatus.blocked)
+                    return
+                if fn["name"] == "ask_agent":
+                    _close(RunStatus.blocked)
+                    return
+
+        self._system_comment("Reached iteration limit without completing task.")
+        _close(RunStatus.limit_reached)
+
+    def _system_comment(self, content: str) -> None:
+        self.db.add(Comment(task_id=self.task.id, author_id=self._agent_db_id(),
+                            content=content, is_system=True))
+        self.db.commit()
+
+    def _agent_comment(self, content: str) -> None:
+        self.db.add(Comment(task_id=self.task.id, author_id=self._agent_db_id(),
+                            content=content, is_system=False))
+        self.db.commit()
+
+    def _set_status(self, status: str) -> None:
+        self.task.status = TaskStatus(status)
+        self.db.commit()

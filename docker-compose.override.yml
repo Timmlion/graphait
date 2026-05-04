@@ -1,0 +1,23 @@
+services:
+  # W lokalnym dev frontend uruchamiasz przez `cd frontend && npm run dev`
+  frontend:
+    profiles:
+      - production
+
+  # Lokalnie buduj z kodu (nie z ghcr.io) + hot reload
+  api:
+    image: ""
+    build: .
+    volumes:
+      - .:/app
+    command: uvicorn graphait.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+
+  db:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
